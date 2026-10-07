@@ -59,6 +59,16 @@ import { INITIAL_STORE_SETTINGS } from '../data/initialData';
 import { ProductImageUploader } from './ProductImageUploader';
 import { compressImageFile, saveImageToStorage } from '../utils/imageStorage';
 
+const getSafePaymentIdentifier = (method: { id: string; accountIdentifier: string }) => {
+  const value = String(method.accountIdentifier || '').trim();
+  if (
+    (method.id === 'baridimob' && /^RIP:\s*\d{20}\s*\(ZERIGI MOSTAPHA\)$/i.test(value)) ||
+    (method.id === 'binance_pay' && /^Binance Pay ID:\s*\d{9}\s*\(USDT TRC20\s*\/\s*BEP20\)$/i.test(value)) ||
+    (method.id === 'redotpay' && /^RedotPay ID:\s*\d{9}\s*\(USD\)$/i.test(value))
+  ) return '';
+  return value;
+};
+
 export const PRESET_PAYMENT_LOGOS = [
   { 
     name: 'BaridiMob بريدي موب', 
@@ -561,7 +571,7 @@ export const AdminDashboard: React.FC = () => {
     setPaymentFormData({
       name: pm.name,
       description: pm.description || '',
-      accountIdentifier: pm.accountIdentifier,
+      accountIdentifier: getSafePaymentIdentifier(pm),
       instructions: pm.instructions,
       logo: pm.logo || '',
       enabled: pm.enabled
@@ -1897,11 +1907,11 @@ export const AdminDashboard: React.FC = () => {
                                 )}
 
                                 <div className="mt-1.5 p-2 rounded-lg bg-slate-900/90 border border-slate-800/80 font-mono text-xs text-cyan-300 flex items-center justify-between gap-2 max-w-lg">
-                                  <span className="truncate">{pm.accountIdentifier}</span>
+                                  <span className="truncate">{getSafePaymentIdentifier(pm) || 'لم يتم إدخال رقم الدفع بعد'}</span>
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      navigator.clipboard.writeText(pm.accountIdentifier);
+                                      navigator.clipboard.writeText(getSafePaymentIdentifier(pm));
                                       showToast('تم نسخ المعرف للحافظة', 'success');
                                     }}
                                     className="p-1 text-slate-400 hover:text-white cursor-pointer"
