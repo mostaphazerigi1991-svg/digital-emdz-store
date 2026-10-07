@@ -574,19 +574,25 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Dynamic Payment Methods CRUD
   const addPaymentMethod = (data: Omit<DynamicPaymentMethod, 'id' | 'order'>) => {
     const id = `pm-${Date.now()}`;
-    const newMethod: DynamicPaymentMethod = {
-      ...data,
-      id,
-      order: paymentMethods.length + 1,
-    };
-    setPaymentMethods((prev) => [...prev, newMethod]);
-    showToast(`تمت إضافة طريقة الدفع "${newMethod.name}" بنجاح!`, 'success');
+    setPaymentMethods((prev) => {
+      const newMethod: DynamicPaymentMethod = {
+        ...data,
+        id,
+        order: prev.length + 1,
+      };
+      const next = [...prev, newMethod];
+      localStorage.setItem('digitalemdz_payment_methods', JSON.stringify(next));
+      return next;
+    });
+    showToast(`تمت إضافة طريقة الدفع "${data.name}" بنجاح!`, 'success');
   };
 
   const updatePaymentMethod = (updated: DynamicPaymentMethod) => {
-    setPaymentMethods((prev) =>
-      prev.map((pm) => (pm.id === updated.id ? updated : pm))
-    );
+    setPaymentMethods((prev) => {
+      const next = prev.map((pm) => (pm.id === updated.id ? updated : pm));
+      localStorage.setItem('digitalemdz_payment_methods', JSON.stringify(next));
+      return next;
+    });
     showToast(`تم حفظ تعديل طريقة الدفع "${updated.name}" بنجاح!`, 'success');
   };
 
