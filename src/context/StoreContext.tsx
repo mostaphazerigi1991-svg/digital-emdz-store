@@ -796,22 +796,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const cleanEmail = email.trim().toLowerCase();
     const cleanPass = password.trim();
 
-    // Always read the latest saved credentials from this browser.
-    // There are no hidden fallback passwords: after changing the password,
-    // only the newly saved credentials are accepted.
-    let saved = adminCredentials;
-    try {
-      const stored = localStorage.getItem('digitalemdz_admin_credentials');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed?.email && parsed?.passcode) {
-          saved = {
-            email: String(parsed.email).trim(),
-            passcode: String(parsed.passcode).trim(),
-          };
-        }
-      }
-    } catch {}
+    // Use the credentials currently loaded into this page. This keeps the
+    // login check identical to what is shown in the login form and avoids a
+    // stale localStorage value from another browser tab overriding the form.
+    const saved = {
+      email: String(adminCredentials.email || '').trim(),
+      passcode: String(adminCredentials.passcode || '').trim(),
+    };
 
     const isCorrectEmail = cleanEmail === saved.email.toLowerCase();
     const isCorrectPassword = cleanPass === saved.passcode;
