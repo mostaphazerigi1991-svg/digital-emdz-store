@@ -897,7 +897,7 @@ export const AdminDashboard: React.FC = () => {
               >
                 <div className="flex items-center gap-2.5">
                   <Lock className="w-4 h-4 text-cyan-400" />
-                  <span>كلمة السر والإيميل</span>
+                  <span>تغيير الإيميل وكلمة السر</span>
                 </div>
                 <span className="text-[10px] text-cyan-400 bg-cyan-950/60 border border-cyan-800/40 px-1.5 py-0.5 rounded font-mono">أمان</span>
               </button>
