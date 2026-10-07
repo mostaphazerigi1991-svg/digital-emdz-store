@@ -169,6 +169,15 @@ const readCloudPaymentMethods = async (): Promise<DynamicPaymentMethod[] | null>
   }
 };
 
+const isPlaceholderPaymentIdentifier = (method: DynamicPaymentMethod) => {
+  const value = String(method.accountIdentifier || '').trim();
+  if (!value) return true;
+  if (method.id === 'baridimob' && /^RIP:\s*\\d{20}\s*\\(ZERIGI MOSTAPHA\\)$/i.test(value)) return true;
+  if (method.id === 'binance_pay' && /^Binance Pay ID:\s*\\d{9}\s*\\(USDT TRC20\\s*\\/\\s*BEP20\\)$/i.test(value)) return true;
+  if (method.id === 'redotpay' && /^RedotPay ID:\s*\\d{9}\s*\\(USD\\)$/i.test(value)) return true;
+  return false;
+};
+
 const writeCloudPaymentMethods = async (methods: DynamicPaymentMethod[]): Promise<boolean> => {
   try {
     const response = await fetch(PAYMENT_CLOUD_URL, {
@@ -311,8 +320,23 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (cancelled) return;
 
       if (Array.isArray(cloudMethods) && cloudMethods.length > 0) {
-        setPaymentMethods(cloudMethods);
-        localStorage.setItem('digitalemdz_payment_methods', JSON.stringify(cloudMethods));
+        // Never let an empty/placeholder cloud record erase a real payment ID
+        // already saved in this owner's browser. This was the cause of IDs
+        // disappearing after checkout/admin pages loaded.
+        const merged = cloudMethods.map((cloudMethod) => {
+          const localMethod = paymentMethods.find(pm => pm.id === cloudMethod.id);
+          if (localMethod && !isPlaceholderPaymentIdentifier(cloudMethod) === false && !isPlaceholderPaymentIdentifier(localMethod)) {
+            return { ...cloudMethod, accountIdentifier: localMethod.accountIdentifier };
+          }
+          if (localMethod && isPlaceholderPaymentIdentifier(cloudMethod) && !isPlaceholderPaymentIdentifier(localMethod)) {
+            return { ...cloudMethod, accountIdentifier: localMethod.accountIdentifier };
+          }
+          return cloudMethod;
+        });
+        setPaymentMethods(merged);
+        localStorage.setItem('digitalemdz_payment_methods', JSON.stringify(merged));
+        // Push the merged configuration so other browsers receive the real IDs too.
+        await writeCloudPaymentMethods(merged);
       } else {
         // First-time setup: publish the current/default methods so every device
         // starts from the same shared configuration.
