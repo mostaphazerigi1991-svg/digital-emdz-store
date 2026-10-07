@@ -172,9 +172,9 @@ const readCloudPaymentMethods = async (): Promise<DynamicPaymentMethod[] | null>
 const isPlaceholderPaymentIdentifier = (method: DynamicPaymentMethod) => {
   const value = String(method.accountIdentifier || '').trim();
   if (!value) return true;
-  if (method.id === 'baridimob' && /^RIP:\s*\\d{20}\s*\\(ZERIGI MOSTAPHA\\)$/i.test(value)) return true;
-  if (method.id === 'binance_pay' && /^Binance Pay ID:\s*\\d{9}\s*\\(USDT TRC20\\s*\\/\\s*BEP20\\)$/i.test(value)) return true;
-  if (method.id === 'redotpay' && /^RedotPay ID:\s*\\d{9}\s*\\(USD\\)$/i.test(value)) return true;
+  if (method.id === 'baridimob' && /^RIP:\s*\d{20}\s*\\(ZERIGI MOSTAPHA\\)$/i.test(value)) return true;
+  if (method.id === 'binance_pay' && /^Binance Pay ID:\s*\d{9}\s*\\(USDT TRC20\\s*\\/\\s*BEP20\\)$/i.test(value)) return true;
+  if (method.id === 'redotpay' && /^RedotPay ID:\s*\d{9}\s*\\(USD\\)$/i.test(value)) return true;
   return false;
 };
 
