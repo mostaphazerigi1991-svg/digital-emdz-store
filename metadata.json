@@ -1,0 +1,6 @@
+{
+  "name": "Digital Emdz | متجر المنتجات والاشتراكات الرقمية",
+  "description": "Digital Emdz متجر رقمي لبيع المنتجات الرقمية والاشتراكات والقوالب والخدمات الرقمية بسهولة وأمان.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
