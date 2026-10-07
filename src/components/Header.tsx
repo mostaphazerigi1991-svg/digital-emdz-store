@@ -213,11 +213,11 @@ export const Header: React.FC<HeaderProps> = ({ onNavigateSection }) => {
               <>
                 <button
                   onClick={() => openAdminWithTab('settings')}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-200 hover:text-white bg-slate-800/80 hover:bg-slate-700 border border-slate-700/80 hover:border-cyan-500/50 transition-all cursor-pointer shadow-sm"
-                  title="إعدادات المتجر وطرق الدفع"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-cyan-300 hover:text-white bg-cyan-950/50 hover:bg-cyan-900/60 border border-cyan-800/70 hover:border-cyan-500 transition-all cursor-pointer shadow-sm"
+                  title="لوحة الإدارة الخاصة"
                 >
-                  <Settings className="w-4 h-4 text-cyan-400" />
-                  <span className="hidden sm:inline">الإعدادات</span>
+                  <ShieldCheck className="w-4 h-4 text-cyan-400" />
+                  <span>الإدارة</span>
                 </button>
 
                 <button
