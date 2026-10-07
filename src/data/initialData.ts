@@ -463,7 +463,7 @@ export const INITIAL_STORE_SETTINGS: StoreSettings = {
   heroBadge: 'المنصة الأولى المعتمدة للمنتجات والاشتراكات الرقمية',
   heroCta1Text: 'تصفح المنتجات',
   heroCta2Text: 'اكتشف العروض',
-  whatsappNumber: '+2137709139434',
+  whatsappNumber: '+213770913494',
   whatsappMessage: 'مرحبًا Digital Emdz، أريد الاستفسار عن أحد المنتجات.',
   supportEmail: 'digitalemdz@gmail.com',
   phone: '07709139434',
