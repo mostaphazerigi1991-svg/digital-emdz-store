@@ -323,13 +323,22 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         // Never let an empty/placeholder cloud record erase a real payment ID
         // already saved in this owner's browser. This was the cause of IDs
         // disappearing after checkout/admin pages loaded.
-        const merged = cloudMethods.map((cloudMethod) => {
-          const localMethod = paymentMethods.find(pm => pm.id === cloudMethod.id);
-          if (localMethod && isPlaceholderPaymentIdentifier(cloudMethod) && !isPlaceholderPaymentIdentifier(localMethod)) {
-            return { ...cloudMethod, accountIdentifier: localMethod.accountIdentifier };
+        // Merge cloud + local by payment ID. Cloud keeps the shared method settings,
+        // while a real identifier already saved locally always wins over an empty/placeholder one.
+        const byId = new Map<string, DynamicPaymentMethod>();
+        paymentMethods.forEach(localMethod => byId.set(localMethod.id, localMethod));
+        cloudMethods.forEach(cloudMethod => {
+          const localMethod = byId.get(cloudMethod.id);
+          if (localMethod && !isPlaceholderPaymentIdentifier(localMethod)) {
+            byId.set(cloudMethod.id, {
+              ...cloudMethod,
+              accountIdentifier: localMethod.accountIdentifier,
+            });
+          } else {
+            byId.set(cloudMethod.id, cloudMethod);
           }
-          return cloudMethod;
         });
+        const merged = Array.from(byId.values()).sort((a, b) => a.order - b.order);
         setPaymentMethods(merged);
         localStorage.setItem('digitalemdz_payment_methods', JSON.stringify(merged));
         // Push the merged configuration so other browsers receive the real IDs too.
