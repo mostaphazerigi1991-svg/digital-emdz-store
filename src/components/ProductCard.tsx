@@ -31,7 +31,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
   } = useStore();
 
   const handleShareProduct = async () => {
-    const url = `${window.location.origin}${window.location.pathname}?product=${encodeURIComponent(product.slug || product.id)}`;
+    const url = `${window.location.origin}${window.location.pathname}?product=${encodeURIComponent(product.slug || product.id)}&public=1`;
     try {
       if (navigator.share) {
         await navigator.share({
@@ -45,6 +45,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
       }
     } catch {}
   };
+
+  const isPublicView = new URLSearchParams(window.location.search).get('public') === '1';
+  const canShowOwner = Boolean(ownerUser || isAdminAuthenticated) && !isPublicView;
 
   const getBadgeStyle = (badge?: string) => {
     switch (badge) {
@@ -184,7 +187,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
           </div>
 
           {/* Owner Quick Edit Bar (Only visible when Owner is logged in) */}
-          {(ownerUser || isAdminAuthenticated) && (
+          {canShowOwner && (
             <div className="pt-2.5 border-t border-indigo-900/50 flex items-center justify-between gap-2 text-xs animate-fadeIn">
               <button
                 onClick={() => openProductEditorForEdit(product)}
