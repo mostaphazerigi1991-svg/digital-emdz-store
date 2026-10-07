@@ -41,11 +41,20 @@ export const ProductDetailModal: React.FC = () => {
 
   const product = selectedProduct;
 
-  const handleShare = () => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(window.location.href);
-      showToast('تم نسخ رابط المنتج للمشاركة', 'success');
-    }
+  const handleShare = async () => {
+    const url = `${window.location.origin}${window.location.pathname}?product=${encodeURIComponent(product.slug || product.id)}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: product.name,
+          text: `شاهد هذا المنتج على ${storeSettings.storeName}`,
+          url
+        });
+      } else if (navigator.clipboard) {
+        await navigator.clipboard.writeText(url);
+        showToast('تم نسخ رابط المنتج للمشاركة', 'success');
+      }
+    } catch {}
   };
 
   const handleWhatsAppInquiry = () => {
