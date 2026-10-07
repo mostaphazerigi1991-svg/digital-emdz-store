@@ -54,7 +54,7 @@ export const Header: React.FC<HeaderProps> = ({ onNavigateSection }) => {
   };
 
   const handleShareSite = async () => {
-    const url = `${window.location.origin}${window.location.pathname}?public=1`;
+    const url = `${window.location.origin}${window.location.pathname}`;
     try {
       if (navigator.share) {
         await navigator.share({
