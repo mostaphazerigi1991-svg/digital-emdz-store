@@ -399,8 +399,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     localStorage.setItem('digitalemdz_orders', JSON.stringify(orders));
   }, [orders]);
 
-  // Sync settings to local storage
+  // Sync settings to local storage and migrate the previous incorrect WhatsApp number
   useEffect(() => {
+    const previousWrongNumber = '+2137709139434';
+    if (storeSettings.whatsappNumber === previousWrongNumber) {
+      setStoreSettings(prev => ({
+        ...prev,
+        whatsappNumber: INITIAL_STORE_SETTINGS.whatsappNumber,
+      }));
+      return;
+    }
     localStorage.setItem('digitalemdz_settings', JSON.stringify(storeSettings));
   }, [storeSettings]);
 
