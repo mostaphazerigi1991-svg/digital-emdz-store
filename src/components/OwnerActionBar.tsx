@@ -23,8 +23,9 @@ export const OwnerActionBar: React.FC = () => {
   } = useStore();
 
   const isOwner = Boolean(ownerUser || isAdminAuthenticated);
+  const isPublicView = new URLSearchParams(window.location.search).get('public') === '1';
 
-  if (!isOwner) return null;
+  if (!isOwner || isPublicView) return null;
 
   return (
     <aside aria-label="شريط إدارة المالك" className="sticky top-0 z-50 bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-950 border-b border-indigo-500/40 text-xs py-2 px-4 shadow-xl">
