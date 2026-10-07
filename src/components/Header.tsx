@@ -38,6 +38,8 @@ export const Header: React.FC<HeaderProps> = ({ onNavigateSection }) => {
   } = useStore();
 
   const isOwner = Boolean(ownerUser || isAdminAuthenticated);
+  const isPublicView = new URLSearchParams(window.location.search).get('public') === '1';
+  const canShowOwner = isOwner && !isPublicView;
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleNavClick = (sectionId: string) => {
@@ -52,7 +54,7 @@ export const Header: React.FC<HeaderProps> = ({ onNavigateSection }) => {
   };
 
   const handleShareSite = async () => {
-    const url = window.location.origin + window.location.pathname;
+    const url = `${window.location.origin}${window.location.pathname}?public=1`;
     try {
       if (navigator.share) {
         await navigator.share({
@@ -159,7 +161,7 @@ export const Header: React.FC<HeaderProps> = ({ onNavigateSection }) => {
               <Wrench className="w-3.5 h-3.5 text-cyan-400" />
               <span>طلب خدمة مخصصة</span>
             </button>
-            {isOwner && (
+            {canShowOwner && (
               <button
                 onClick={() => openAdminWithTab('settings')}
                 className="hover:text-cyan-300 text-cyan-400 font-bold transition-colors py-1 cursor-pointer flex items-center gap-1.5"
@@ -207,7 +209,7 @@ export const Header: React.FC<HeaderProps> = ({ onNavigateSection }) => {
             </button>
 
             {/* Owner-only controls */}
-            {isOwner && (
+            {canShowOwner && (
               <>
                 <button
                   onClick={() => openAdminWithTab('settings')}
@@ -297,7 +299,7 @@ export const Header: React.FC<HeaderProps> = ({ onNavigateSection }) => {
               <ChevronLeft className="w-4 h-4 text-slate-400" />
             </button>
 
-            {isOwner && (
+            {canShowOwner && (
               <button
                 onClick={() => {
                   setMobileMenuOpen(false);
@@ -314,7 +316,7 @@ export const Header: React.FC<HeaderProps> = ({ onNavigateSection }) => {
             )}
           </div>
 
-          {isOwner && (
+          {canShowOwner && (
             <div className="pt-2 border-t border-slate-800/80 flex flex-col gap-2">
               <button
                 onClick={() => {
