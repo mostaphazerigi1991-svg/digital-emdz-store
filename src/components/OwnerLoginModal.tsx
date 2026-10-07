@@ -17,24 +17,31 @@ export const OwnerLoginModal: React.FC = () => {
     isOwnerLoginModalOpen, 
     setIsOwnerLoginModalOpen, 
     loginOwner,
-    ownerUser
+    ownerUser,
+    adminCredentials
   } = useStore();
 
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(adminCredentials.email);
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOwnerLoginModalOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsSubmitting(true);
-    setTimeout(() => {
-      loginOwner(email, password);
-      setIsSubmitting(false);
-      setPassword('');
-    }, 400);
+
+    // Read the actual values from the form so browser/password-manager
+    // autofill is captured even when React does not receive an onChange event.
+    const formData = new FormData(e.currentTarget);
+    const submittedEmail = String(formData.get('email') || email).trim();
+    const submittedPassword = String(formData.get('password') || password).trim();
+
+    loginOwner(submittedEmail, submittedPassword);
+    setEmail(submittedEmail);
+    setPassword('');
+    setIsSubmitting(false);
   };
 
   return (
@@ -83,7 +90,9 @@ export const OwnerLoginModal: React.FC = () => {
                 <span>البريد الإلكتروني للإدارة *</span>
               </label>
               <input
-                type="text"
+                type="email"
+                name="email"
+                autoComplete="username"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -100,6 +109,8 @@ export const OwnerLoginModal: React.FC = () => {
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
+                  name="password"
+                  autoComplete="current-password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
