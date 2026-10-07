@@ -188,7 +188,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           heroBadge: parsed?.heroBadge || INITIAL_STORE_SETTINGS.heroBadge,
           heroCta1Text: parsed?.heroCta1Text || INITIAL_STORE_SETTINGS.heroCta1Text,
           heroCta2Text: parsed?.heroCta2Text || INITIAL_STORE_SETTINGS.heroCta2Text,
-          whatsappNumber: parsed?.whatsappNumber || INITIAL_STORE_SETTINGS.whatsappNumber,
+          whatsappNumber: INITIAL_STORE_SETTINGS.whatsappNumber,
           whatsappMessage: parsed?.whatsappMessage || INITIAL_STORE_SETTINGS.whatsappMessage,
           supportEmail: parsed?.supportEmail || INITIAL_STORE_SETTINGS.supportEmail,
           phone: parsed?.phone || INITIAL_STORE_SETTINGS.phone,
