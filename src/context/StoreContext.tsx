@@ -147,6 +147,37 @@ const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 const ADMIN_PASSCODE = 'admin123'; // Default secure passcode for store manager
 
+
+const PAYMENT_CLOUD_URL = 'https://jsoning.com/api/digitalemdz_store_payment_config_7f3c9a2d/payment_methods';
+
+const readCloudPaymentMethods = async (): Promise<DynamicPaymentMethod[] | null> => {
+  try {
+    const response = await fetch(PAYMENT_CLOUD_URL, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return Array.isArray(data) ? data : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeCloudPaymentMethods = async (methods: DynamicPaymentMethod[]): Promise<boolean> => {
+  try {
+    const response = await fetch(PAYMENT_CLOUD_URL, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(methods),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+};
+
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Products
   const [products, setProducts] = useState<Product[]>(() => {
@@ -264,10 +295,43 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return INITIAL_DYNAMIC_PAYMENT_METHODS;
   });
 
-  // Sync payment methods to local storage
+  // Payment methods are synchronized to a shared cloud JSON store so the
+  // same IDs appear on every browser/device, not only in this browser's localStorage.
+  const [paymentCloudReady, setPaymentCloudReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadSharedPaymentMethods = async () => {
+      const cloudMethods = await readCloudPaymentMethods();
+      if (cancelled) return;
+
+      if (Array.isArray(cloudMethods) && cloudMethods.length > 0) {
+        setPaymentMethods(cloudMethods);
+        localStorage.setItem('digitalemdz_payment_methods', JSON.stringify(cloudMethods));
+      } else {
+        // First-time setup: publish the current/default methods so every device
+        // starts from the same shared configuration.
+        await writeCloudPaymentMethods(paymentMethods);
+      }
+
+      if (!cancelled) setPaymentCloudReady(true);
+    };
+
+    loadSharedPaymentMethods();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   useEffect(() => {
     localStorage.setItem('digitalemdz_payment_methods', JSON.stringify(paymentMethods));
-  }, [paymentMethods]);
+
+    if (!paymentCloudReady) return;
+
+    void writeCloudPaymentMethods(paymentMethods);
+  }, [paymentMethods, paymentCloudReady]);
 
   // Active filters and views
   const [selectedCategory, setSelectedCategory] = useState<ProductCategory | 'all'>('all');
@@ -580,19 +644,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         id,
         order: prev.length + 1,
       };
-      const next = [...prev, newMethod];
-      localStorage.setItem('digitalemdz_payment_methods', JSON.stringify(next));
-      return next;
+      return [...prev, newMethod];
     });
     showToast(`تمت إضافة طريقة الدفع "${data.name}" بنجاح!`, 'success');
   };
 
   const updatePaymentMethod = (updated: DynamicPaymentMethod) => {
-    setPaymentMethods((prev) => {
-      const next = prev.map((pm) => (pm.id === updated.id ? updated : pm));
-      localStorage.setItem('digitalemdz_payment_methods', JSON.stringify(next));
-      return next;
-    });
+    setPaymentMethods((prev) =>
+      prev.map((pm) => (pm.id === updated.id ? updated : pm))
+    );
     showToast(`تم حفظ تعديل طريقة الدفع "${updated.name}" بنجاح!`, 'success');
   };
 
@@ -641,10 +701,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const resetPaymentMethodsToDefault = () => {
     setPaymentMethods(INITIAL_DYNAMIC_PAYMENT_METHODS);
-    localStorage.setItem(
-      'digitalemdz_payment_methods',
-      JSON.stringify(INITIAL_DYNAMIC_PAYMENT_METHODS)
-    );
     showToast('تمت استعادة طرق الدفع الافتراضية بنجاح', 'info');
   };
 
