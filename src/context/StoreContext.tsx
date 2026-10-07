@@ -172,9 +172,9 @@ const readCloudPaymentMethods = async (): Promise<DynamicPaymentMethod[] | null>
 const isPlaceholderPaymentIdentifier = (method: DynamicPaymentMethod) => {
   const value = String(method.accountIdentifier || '').trim();
   if (!value) return true;
-  if (method.id === 'baridimob' && /^RIP:\s*\d{20}\s*\\(ZERIGI MOSTAPHA\\)$/i.test(value)) return true;
-  if (method.id === 'binance_pay' && /^Binance Pay ID:\s*\d{9}\s*\\(USDT TRC20\\s*\\/\\s*BEP20\\)$/i.test(value)) return true;
-  if (method.id === 'redotpay' && /^RedotPay ID:\s*\d{9}\s*\\(USD\\)$/i.test(value)) return true;
+  if (method.id === 'baridimob' && value === 'RIP: 00799999000123456789 (ZERIGI MOSTAPHA)') return true;
+  if (method.id === 'binance_pay' && value === 'Binance Pay ID: 789456123 (USDT TRC20 / BEP20)') return true;
+  if (method.id === 'redotpay' && value === 'RedotPay ID: 198273645 (USD)') return true;
   return false;
 };
 
@@ -325,9 +325,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         // disappearing after checkout/admin pages loaded.
         const merged = cloudMethods.map((cloudMethod) => {
           const localMethod = paymentMethods.find(pm => pm.id === cloudMethod.id);
-          if (localMethod && !isPlaceholderPaymentIdentifier(cloudMethod) === false && !isPlaceholderPaymentIdentifier(localMethod)) {
-            return { ...cloudMethod, accountIdentifier: localMethod.accountIdentifier };
-          }
           if (localMethod && isPlaceholderPaymentIdentifier(cloudMethod) && !isPlaceholderPaymentIdentifier(localMethod)) {
             return { ...cloudMethod, accountIdentifier: localMethod.accountIdentifier };
           }
