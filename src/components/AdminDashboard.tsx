@@ -188,6 +188,17 @@ export const AdminDashboard: React.FC = () => {
     setAdminEmailInput(adminCredentials.email);
   }, [adminCredentials]);
 
+  // Remove legacy placeholder payment IDs from the saved browser data as soon as the admin panel opens.
+  useEffect(() => {
+    paymentMethods.forEach((pm) => {
+      const safe = getSafePaymentIdentifier(pm);
+      if (pm.accountIdentifier.trim() && !safe) {
+        updatePaymentMethod({ ...pm, accountIdentifier: '' });
+      }
+    });
+  }, [paymentMethods]);
+
+
   // -------------------------------------------------------------
   // PRODUCTS MANAGEMENT STATE
   // -------------------------------------------------------------
