@@ -31,7 +31,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
   } = useStore();
 
   const handleShareProduct = async () => {
-    const url = `${window.location.origin}${window.location.pathname}?product=${encodeURIComponent(product.slug || product.id)}&public=1`;
+    const url = `${window.location.origin}${window.location.pathname}?product=${encodeURIComponent(product.slug || product.id)}`;
     try {
       if (navigator.share) {
         await navigator.share({
