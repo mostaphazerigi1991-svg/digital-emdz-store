@@ -575,7 +575,7 @@ export const AdminDashboard: React.FC = () => {
     setPaymentFormData({
       name: pm.name,
       description: pm.description || '',
-      accountIdentifier: getSafePaymentIdentifier(pm),
+      accountIdentifier: String(pm.accountIdentifier || '').trim(),
       instructions: pm.instructions,
       logo: pm.logo || '',
       enabled: pm.enabled
