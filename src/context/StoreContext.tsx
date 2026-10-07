@@ -342,7 +342,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [checkoutProduct, setCheckoutProduct] = useState<Product | null>(null);
   const [latestCompletedOrder, setLatestCompletedOrder] = useState<Order | null>(null);
-  const [isAdminOpen, setIsAdminOpen] = useState(false);
+  // Re-open the admin dashboard automatically on the owner's browser after a previous successful login.
+  // The authentication flag is stored only for this site's origin in localStorage.
+  const [isAdminOpen, setIsAdminOpen] = useState(() => {
+    return localStorage.getItem('digitalemdz_admin_auth') === 'true';
+  });
   const [adminActiveTab, setAdminActiveTab] = useState<'products' | 'orders' | 'payments' | 'coupons' | 'settings'>('settings');
 
   const openAdminWithTab = (tab: 'products' | 'orders' | 'payments' | 'coupons' | 'settings' = 'settings') => {
