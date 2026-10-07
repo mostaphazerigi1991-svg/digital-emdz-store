@@ -75,6 +75,15 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
         {/* Dark subtle gradient overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent"></div>
 
+        <button
+          onClick={handleShareProduct}
+          title="مشاركة رابط المنتج"
+          aria-label="مشاركة رابط المنتج"
+          className="absolute top-3 left-1/2 -translate-x-1/2 z-10 p-2 rounded-lg bg-slate-950/75 backdrop-blur-md text-slate-200 hover:text-white hover:bg-indigo-600/90 border border-slate-700/70 hover:border-indigo-400 transition-all"
+        >
+          <Share2 className="w-4 h-4 text-cyan-400" />
+        </button>
+
         {/* Badge in top corner */}
         {product.badge && (
           <div className="absolute top-3 right-3 z-10">
@@ -156,7 +165,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
           </div>
 
           {/* Action Buttons: شراء الآن & عرض التفاصيل */}
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <button
               onClick={() => startDirectCheckout(product)}
               className="py-2.5 px-3 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white font-bold text-xs shadow-md shadow-indigo-600/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
@@ -170,17 +179,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
               className="py-2.5 px-3 rounded-xl bg-slate-800/80 hover:bg-slate-750 text-slate-200 hover:text-white font-medium text-xs border border-slate-700/80 hover:border-slate-600 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <Eye className="w-3.5 h-3.5 text-slate-400" />
-              <span>التفاصيل</span>
-            </button>
-
-            <button
-              onClick={handleShareProduct}
-              title="مشاركة رابط المنتج"
-              aria-label="مشاركة رابط المنتج"
-              className="py-2.5 px-3 rounded-xl bg-slate-800/80 hover:bg-indigo-600/80 text-slate-200 hover:text-white font-medium text-xs border border-slate-700/80 hover:border-indigo-500 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              <Share2 className="w-3.5 h-3.5 text-cyan-400" />
-              <span>مشاركة</span>
+              <span>عرض التفاصيل</span>
             </button>
           </div>
 
