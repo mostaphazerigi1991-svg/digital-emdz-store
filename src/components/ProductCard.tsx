@@ -81,7 +81,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
           aria-label="مشاركة رابط المنتج"
           className="absolute top-3 left-1/2 -translate-x-1/2 z-10 p-2 rounded-lg bg-slate-950/75 backdrop-blur-md text-slate-200 hover:text-white hover:bg-indigo-600/90 border border-slate-700/70 hover:border-indigo-400 transition-all"
         >
-          <Share2 className="w-4 h-4 text-cyan-400" />
+          <Share2 className="w-4 h-4 text-white drop-shadow-[0_0_4px_rgba(255,255,255,0.75)]" />
         </button>
 
         {/* Badge in top corner */}
