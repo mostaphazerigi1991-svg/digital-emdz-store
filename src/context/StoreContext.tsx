@@ -366,7 +366,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const saved = localStorage.getItem('digitalemdz_admin_credentials');
       if (saved) return JSON.parse(saved);
     } catch {}
-    return { email: 'digitalemdz@gmail.com', passcode: 'emdz2026' };
+    return { email: 'mostaphazerigi1991@gmail.com
+', passcode: 'mostapha1991' };
   });
 
   const updateAdminCredentials = (newEmail: string, newPasscode: string): boolean => {
