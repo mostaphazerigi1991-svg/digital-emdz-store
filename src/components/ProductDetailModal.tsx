@@ -174,23 +174,34 @@ export const ProductDetailModal: React.FC = () => {
               </p>
 
               {/* Price Block */}
-              <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 flex items-center justify-between">
-                <div>
-                  <div className="text-[11px] text-slate-400">السعر النهائي:</div>
-                  <div className="flex items-baseline gap-2 mt-0.5">
-                    <span className="text-2xl sm:text-3xl font-black text-white">
-                      {product.price.toLocaleString()} <span className="text-sm font-bold text-cyan-400">{storeSettings.currency}</span>
-                    </span>
-                    {product.originalPrice && product.originalPrice > product.price && (
-                      <span className="text-sm text-slate-500 line-through">
-                        {product.originalPrice.toLocaleString()} {storeSettings.currency}
+              <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <button
+                    onClick={handleShare}
+                    title="مشاركة رابط المنتج"
+                    aria-label="مشاركة رابط المنتج"
+                    className="shrink-0 w-10 h-10 rounded-xl bg-slate-800 hover:bg-indigo-600/80 text-slate-200 hover:text-white border border-slate-700 hover:border-indigo-500 transition-all flex items-center justify-center"
+                  >
+                    <Share2 className="w-4 h-4 text-cyan-400" />
+                  </button>
+
+                  <div>
+                    <div className="text-[11px] text-slate-400">السعر النهائي:</div>
+                    <div className="flex items-baseline gap-2 mt-0.5">
+                      <span className="text-2xl sm:text-3xl font-black text-white">
+                        {product.price.toLocaleString()} <span className="text-sm font-bold text-cyan-400">{storeSettings.currency}</span>
                       </span>
-                    )}
+                      {product.originalPrice && product.originalPrice > product.price && (
+                        <span className="text-sm text-slate-500 line-through">
+                          {product.originalPrice.toLocaleString()} {storeSettings.currency}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
                 {product.discountPercent && product.discountPercent > 0 && (
-                  <span className="text-xs font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-800/50 px-2.5 py-1 rounded-lg">
+                  <span className="text-xs font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-800/50 px-2.5 py-1 rounded-lg shrink-0">
                     وفرت {(product.originalPrice! - product.price).toLocaleString()} {storeSettings.currency}
                   </span>
                 )}
