@@ -353,12 +353,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Admin access is private to the current authenticated browser session.
   // Visitors must explicitly log in before any admin controls are shown.
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
-    return sessionStorage.getItem('digitalemdz_admin_auth') === 'true';
+    return localStorage.getItem('digitalemdz_admin_auth') === 'true';
   });
   const [ownerUser, setOwnerUser] = useState<{ email: string; name: string } | null>(() => {
     try {
-      const saved = sessionStorage.getItem('digitalemdz_owner_user');
-      if (saved && sessionStorage.getItem('digitalemdz_admin_auth') === 'true') {
+      const saved = localStorage.getItem('digitalemdz_owner_user');
+      if (saved && localStorage.getItem('digitalemdz_admin_auth') === 'true') {
         return JSON.parse(saved);
       }
     } catch {}
@@ -445,8 +445,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       localStorage.setItem('digitalemdz_admin_credentials', JSON.stringify(updated));
       localStorage.setItem('digitalemdz_owner_custom_pass', updated.passcode);
-      sessionStorage.setItem('digitalemdz_owner_user', JSON.stringify({ email: updated.email, name: 'إدارة متجر Digital Emdz' }));
-      sessionStorage.setItem('digitalemdz_admin_auth', 'true');
+      localStorage.setItem('digitalemdz_owner_user', JSON.stringify({ email: updated.email, name: 'إدارة متجر Digital Emdz' }));
+      localStorage.setItem('digitalemdz_admin_auth', 'true');
     } catch {}
     showToast('تم تحديث البريد الإلكتروني وكلمة المرور بنجاح!', 'success');
     return true;
@@ -837,8 +837,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setIsAdminAuthenticated(true);
       const user = { email: adminCredentials.email, name: 'إدارة Digital Emdz' };
       setOwnerUser(user);
-      sessionStorage.setItem('digitalemdz_owner_user', JSON.stringify(user));
-      sessionStorage.setItem('digitalemdz_admin_auth', 'true');
+      localStorage.setItem('digitalemdz_owner_user', JSON.stringify(user));
+      localStorage.setItem('digitalemdz_admin_auth', 'true');
       showToast('تم تسجيل الدخول وتفعيل لوحة الإدارة بنجاح!', 'success');
       return true;
     }
@@ -849,8 +849,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const logoutAdmin = () => {
     setIsAdminAuthenticated(false);
     setOwnerUser(null);
-    sessionStorage.setItem('digitalemdz_admin_auth', 'logged_out');
-    sessionStorage.removeItem('digitalemdz_owner_user');
+    localStorage.setItem('digitalemdz_admin_auth', 'logged_out');
+    localStorage.removeItem('digitalemdz_owner_user');
     showToast('تم تسجيل الخروج من لوحة التحكم', 'info');
   };
 
@@ -875,8 +875,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setAdminCredentials(saved);
       setOwnerUser(user);
       setIsAdminAuthenticated(true);
-      sessionStorage.setItem('digitalemdz_owner_user', JSON.stringify(user));
-      sessionStorage.setItem('digitalemdz_admin_auth', 'true');
+      localStorage.setItem('digitalemdz_owner_user', JSON.stringify(user));
+      localStorage.setItem('digitalemdz_admin_auth', 'true');
       showToast('تم تسجيل الدخول وتفعيل لوحة تحكم الإدارة بنجاح!', 'success');
       setIsOwnerLoginModalOpen(false);
       return true;
@@ -894,8 +894,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const logoutOwner = () => {
     setOwnerUser(null);
     setIsAdminAuthenticated(false);
-    sessionStorage.removeItem('digitalemdz_owner_user');
-    sessionStorage.removeItem('digitalemdz_admin_auth');
+    localStorage.removeItem('digitalemdz_owner_user');
+    localStorage.removeItem('digitalemdz_admin_auth');
     showToast('تم تسجيل خروج صاحب المتجر بنجاح', 'info');
   };
 
