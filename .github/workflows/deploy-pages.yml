@@ -33,7 +33,7 @@ jobs:
         uses: actions/configure-pages@v5
 
       - name: Build
-        run: npm run build -- --base=/digital-emdz-store/
+        run: npm run build -- --base=/
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4
