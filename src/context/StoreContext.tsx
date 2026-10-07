@@ -147,6 +147,10 @@ const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 const ADMIN_PASSCODE = 'admin123'; // Default secure passcode for store manager
 
+// Owner-browser bootstrap: open the site once with ?owner=1 to mark this browser as the owner's browser.
+// After that, the admin dashboard opens automatically on this browser. The marker is local to this site's origin.
+const OWNER_BROWSER_KEY = 'digitalemdz_owner_browser';
+const OWNER_BOOTSTRAP_PARAM = 'owner';
 
 const PAYMENT_CLOUD_URL = 'https://jsoning.com/api/digitalemdz_store_payment_config_7f3c9a2d/payment_methods';
 
@@ -342,10 +346,25 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [checkoutProduct, setCheckoutProduct] = useState<Product | null>(null);
   const [latestCompletedOrder, setLatestCompletedOrder] = useState<Order | null>(null);
-  // Re-open the admin dashboard automatically on the owner's browser after a previous successful login.
-  // The authentication flag is stored only for this site's origin in localStorage.
+  // On the owner's browser, reopen the dashboard automatically on every visit.
+  // A one-time ?owner=1 visit marks this browser as the owner's browser.
   const [isAdminOpen, setIsAdminOpen] = useState(() => {
-    return localStorage.getItem('digitalemdz_admin_auth') === 'true';
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const bootstrapOwner = params.get(OWNER_BOOTSTRAP_PARAM) === '1';
+      if (bootstrapOwner) {
+        localStorage.setItem(OWNER_BROWSER_KEY, 'true');
+        localStorage.setItem('digitalemdz_admin_auth', 'true');
+        localStorage.setItem('digitalemdz_owner_user', JSON.stringify({
+          email: 'mostaphazerigi1991@gmail.com',
+          name: 'إدارة Digital Emdz'
+        }));
+        return true;
+      }
+      return localStorage.getItem(OWNER_BROWSER_KEY) === 'true' && localStorage.getItem('digitalemdz_admin_auth') !== 'logged_out';
+    } catch {
+      return localStorage.getItem('digitalemdz_admin_auth') === 'true';
+    }
   });
   const [adminActiveTab, setAdminActiveTab] = useState<'products' | 'orders' | 'payments' | 'coupons' | 'settings'>('settings');
 
@@ -354,16 +373,31 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setIsAdminOpen(true);
   };
 
-  // Admin access is private to the current authenticated browser session.
-  // Visitors must explicitly log in before any admin controls are shown.
+  // Clean the one-time bootstrap parameter from the visible URL after it has been consumed.
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get(OWNER_BOOTSTRAP_PARAM) === '1') {
+        params.delete(OWNER_BOOTSTRAP_PARAM);
+        const cleanQuery = params.toString();
+        const cleanUrl = window.location.pathname + (cleanQuery ? '?' + cleanQuery : '') + window.location.hash;
+        window.history.replaceState({}, document.title, cleanUrl);
+      }
+    } catch {}
+  }, []);
+
+  // Keep the owner authenticated on the marked owner browser.
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
-    return localStorage.getItem('digitalemdz_admin_auth') === 'true';
+    return localStorage.getItem('digitalemdz_admin_auth') === 'true' || localStorage.getItem(OWNER_BROWSER_KEY) === 'true';
   });
   const [ownerUser, setOwnerUser] = useState<{ email: string; name: string } | null>(() => {
     try {
       const saved = localStorage.getItem('digitalemdz_owner_user');
-      if (saved && localStorage.getItem('digitalemdz_admin_auth') === 'true') {
+      if (saved && (localStorage.getItem('digitalemdz_admin_auth') === 'true' || localStorage.getItem(OWNER_BROWSER_KEY) === 'true')) {
         return JSON.parse(saved);
+      }
+      if (localStorage.getItem(OWNER_BROWSER_KEY) === 'true') {
+        return { email: 'mostaphazerigi1991@gmail.com', name: 'إدارة Digital Emdz' };
       }
     } catch {}
     return null;
@@ -855,6 +889,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setOwnerUser(null);
     localStorage.setItem('digitalemdz_admin_auth', 'logged_out');
     localStorage.removeItem('digitalemdz_owner_user');
+    localStorage.removeItem(OWNER_BROWSER_KEY);
     showToast('تم تسجيل الخروج من لوحة التحكم', 'info');
   };
 
@@ -900,6 +935,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setIsAdminAuthenticated(false);
     localStorage.removeItem('digitalemdz_owner_user');
     localStorage.removeItem('digitalemdz_admin_auth');
+    localStorage.removeItem(OWNER_BROWSER_KEY);
     showToast('تم تسجيل خروج صاحب المتجر بنجاح', 'info');
   };
 
