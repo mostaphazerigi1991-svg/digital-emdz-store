@@ -286,18 +286,19 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setIsAdminOpen(true);
   };
 
+  // Admin access is private to the current authenticated browser session.
+  // Visitors must explicitly log in before any admin controls are shown.
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
-    return sessionStorage.getItem('digitalemdz_admin_auth') !== 'logged_out';
+    return sessionStorage.getItem('digitalemdz_admin_auth') === 'true';
   });
   const [ownerUser, setOwnerUser] = useState<{ email: string; name: string } | null>(() => {
     try {
       const saved = sessionStorage.getItem('digitalemdz_owner_user');
-      if (saved) return JSON.parse(saved);
-      if (sessionStorage.getItem('digitalemdz_admin_auth') === 'logged_out') {
-        return null;
+      if (saved && sessionStorage.getItem('digitalemdz_admin_auth') === 'true') {
+        return JSON.parse(saved);
       }
     } catch {}
-    return { email: 'digitalemdz@gmail.com', name: 'إدارة متجر Digital Emdz' };
+    return null;
   });
   const [isOwnerLoginModalOpen, setIsOwnerLoginModalOpen] = useState(false);
   const [productToEdit, setProductToEdit] = useState<Product | null>(null);
