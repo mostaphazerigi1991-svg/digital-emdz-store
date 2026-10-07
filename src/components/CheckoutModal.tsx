@@ -18,6 +18,16 @@ import {
 import { useStore } from '../context/StoreContext';
 import { OrderItem } from '../types';
 
+const getSafePaymentIdentifier = (method: { id: string; accountIdentifier: string }) => {
+  const value = String(method.accountIdentifier || '').trim();
+  if (
+    (method.id === 'baridimob' && /^RIP:\s*\d{20}\s*\(ZERIGI MOSTAPHA\)$/i.test(value)) ||
+    (method.id === 'binance_pay' && /^Binance Pay ID:\s*\d{9}\s*\(USDT TRC20\s*\/\s*BEP20\)$/i.test(value)) ||
+    (method.id === 'redotpay' && /^RedotPay ID:\s*\d{9}\s*\(USD\)$/i.test(value))
+  ) return '';
+  return value;
+};
+
 export const CheckoutModal: React.FC = () => {
   const { 
     isCheckoutOpen, 
@@ -421,12 +431,12 @@ export const CheckoutModal: React.FC = () => {
                       
                       <div className="flex items-center gap-2 max-w-full">
                         <span className="text-[11px] font-mono text-cyan-300 bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-800 truncate">
-                          {activeMethodObj.accountIdentifier}
+                          {getSafePaymentIdentifier(activeMethodObj) || 'لم يتم إدخال رقم الدفع بعد'}
                         </span>
                         <button
                           type="button"
                           onClick={() => {
-                            navigator.clipboard.writeText(activeMethodObj.accountIdentifier);
+                            navigator.clipboard.writeText(getSafePaymentIdentifier(activeMethodObj));
                             showToast('تم نسخ المعرف لحافظتك بنجاح!', 'success');
                           }}
                           className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-sans text-xs font-bold transition-colors cursor-pointer shrink-0"
