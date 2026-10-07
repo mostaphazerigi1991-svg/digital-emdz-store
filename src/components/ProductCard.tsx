@@ -7,7 +7,8 @@ import {
   CheckCircle, 
   ArrowLeft,
   Edit3,
-  Trash2
+  Trash2,
+  Share2
 } from 'lucide-react';
 import { Product } from '../types';
 import { useStore } from '../context/StoreContext';
@@ -28,6 +29,22 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
     deleteProduct,
     setProductToDelete
   } = useStore();
+
+  const handleShareProduct = async () => {
+    const url = `${window.location.origin}${window.location.pathname}?product=${encodeURIComponent(product.slug || product.id)}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: product.name,
+          text: `شاهد هذا المنتج على ${storeSettings.storeName}`,
+          url
+        });
+      } else if (navigator.clipboard) {
+        await navigator.clipboard.writeText(url);
+        alert('تم نسخ رابط المنتج للمشاركة');
+      }
+    } catch {}
+  };
 
   const getBadgeStyle = (badge?: string) => {
     switch (badge) {
@@ -139,7 +156,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
           </div>
 
           {/* Action Buttons: شراء الآن & عرض التفاصيل */}
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             <button
               onClick={() => startDirectCheckout(product)}
               className="py-2.5 px-3 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white font-bold text-xs shadow-md shadow-indigo-600/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
@@ -153,7 +170,17 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
               className="py-2.5 px-3 rounded-xl bg-slate-800/80 hover:bg-slate-750 text-slate-200 hover:text-white font-medium text-xs border border-slate-700/80 hover:border-slate-600 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <Eye className="w-3.5 h-3.5 text-slate-400" />
-              <span>عرض التفاصيل</span>
+              <span>التفاصيل</span>
+            </button>
+
+            <button
+              onClick={handleShareProduct}
+              title="مشاركة رابط المنتج"
+              aria-label="مشاركة رابط المنتج"
+              className="py-2.5 px-3 rounded-xl bg-slate-800/80 hover:bg-indigo-600/80 text-slate-200 hover:text-white font-medium text-xs border border-slate-700/80 hover:border-indigo-500 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <Share2 className="w-3.5 h-3.5 text-cyan-400" />
+              <span>مشاركة</span>
             </button>
           </div>
 
