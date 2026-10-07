@@ -104,7 +104,7 @@ interface StoreContextType {
   
   // Dedicated Owner System
   ownerUser: { email: string; name: string } | null;
-  loginOwner: (email: string, password: string) => boolean;
+  loginOwner: (email: string, password: string) => Promise<boolean>;
   logoutOwner: () => void;
   isOwnerLoginModalOpen: boolean;
   setIsOwnerLoginModalOpen: (open: boolean) => void;
@@ -128,7 +128,7 @@ interface StoreContextType {
 
   // Admin Credentials (Email & Password/Passcode)
   adminCredentials: { email: string; passcode: string };
-  updateAdminCredentials: (newEmail: string, newPasscode: string) => boolean;
+  updateAdminCredentials: (newEmail: string, newPasscode: string) => Promise<boolean>;
 
   // Search Modal
   isSearchModalOpen: boolean;
@@ -369,22 +369,42 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return { email: 'digitalemdz@gmail.com', passcode: 'emdz2026' };
   });
 
-  const updateAdminCredentials = (newEmail: string, newPasscode: string): boolean => {
+  const AUTH_API_BASE = 'https://digital-emdz-auth.hatchable.site/api/account';
+
+  const updateAdminCredentials = async (newEmail: string, newPasscode: string): Promise<boolean> => {
     if (!newEmail.trim() || !newPasscode.trim()) {
       showToast('يرجى كتابة البريد وكلمة المرور الجديدة', 'error');
       return false;
     }
-    const updated = { email: newEmail.trim(), passcode: newPasscode.trim() };
-    setAdminCredentials(updated);
-    setOwnerUser({ email: updated.email, name: 'إدارة متجر Digital Emdz' });
+    const token = sessionStorage.getItem('digitalemdz_auth_token');
+    if (!token) {
+      showToast('انتهت جلسة الإدارة. سجّل الدخول أولاً.', 'error');
+      return false;
+    }
     try {
+      const response = await fetch(`${AUTH_API_BASE}/credentials`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ email: newEmail.trim(), password: newPasscode.trim() }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        showToast(data.error || 'تعذر تحديث بيانات الدخول.', 'error');
+        return false;
+      }
+      const updated = { email: data.email, passcode: newPasscode.trim() };
+      setAdminCredentials(updated);
+      setOwnerUser({ email: updated.email, name: 'إدارة متجر Digital Emdz' });
       localStorage.setItem('digitalemdz_admin_credentials', JSON.stringify(updated));
       localStorage.setItem('digitalemdz_owner_custom_pass', updated.passcode);
       sessionStorage.setItem('digitalemdz_owner_user', JSON.stringify({ email: updated.email, name: 'إدارة متجر Digital Emdz' }));
       sessionStorage.setItem('digitalemdz_admin_auth', 'true');
-    } catch {}
-    showToast('تم تحديث البريد الإلكتروني وكلمة المرور بنجاح!', 'success');
-    return true;
+      showToast('تم تحديث البريد الإلكتروني وكلمة المرور مركزياً. سيعملان الآن على أي جهاز.', 'success');
+      return true;
+    } catch {
+      showToast('تعذر الاتصال بخدمة الحساب المركزية.', 'error');
+      return false;
+    }
   };
   const [activePolicy, setActivePolicy] = useState<'privacy' | 'terms' | 'refund' | 'faq' | null>(null);
   const [toasts, setToasts] = useState<ToastInfo[]>([]);
@@ -792,41 +812,36 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   // Dedicated Owner System
-  const loginOwner = (email: string, password: string): boolean => {
+  const loginOwner = async (email: string, password: string): Promise<boolean> => {
     const cleanEmail = email.trim().toLowerCase();
     const cleanPass = password.trim();
-    const isOwnerEmail = 
-      cleanEmail === 'admin@digitalemdz.com' || 
-      cleanEmail === 'admin' ||
-      cleanEmail === 'digitalemdz@gmail.com' ||
-      cleanEmail === 'owner@digitalemdz.com' ||
-      cleanEmail === adminCredentials.email.trim().toLowerCase();
-
-    const validPasswords = ['admin123', 'emdz2026'];
-    if (adminCredentials.passcode && adminCredentials.passcode.trim()) {
-      validPasswords.push(adminCredentials.passcode.trim());
-    }
-    const customPass = localStorage.getItem('digitalemdz_owner_custom_pass');
-    if (customPass) validPasswords.push(customPass);
-
-    if (isOwnerEmail && validPasswords.includes(cleanPass)) {
-      const user = { email: adminCredentials.email || 'admin@digitalemdz.com', name: 'إدارة Digital Emdz' };
-      setOwnerUser(user);
-      setIsAdminAuthenticated(true);
-      sessionStorage.setItem('digitalemdz_owner_user', JSON.stringify(user));
-      sessionStorage.setItem('digitalemdz_admin_auth', 'true');
-      showToast('تم تسجيل الدخول وتفعيل لوحة تحكم الإدارة بنجاح!', 'success');
-      setIsOwnerLoginModalOpen(false);
-      return true;
-    }
-
-    if (!isOwnerEmail) {
-      showToast('بيانات الدخول غير صحيحة! يرجى التحقق وإعادة المحاولة.', 'error');
+    try {
+      const response = await fetch(`${AUTH_API_BASE}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail, password: cleanPass }),
+      });
+      const data = await response.json();
+      if (response.ok && data.ok && data.token) {
+        const user = { email: data.email, name: 'إدارة Digital Emdz' };
+        setAdminCredentials(prev => ({ ...prev, email: data.email, passcode: cleanPass }));
+        setOwnerUser(user);
+        setIsAdminAuthenticated(true);
+        sessionStorage.setItem('digitalemdz_auth_token', data.token);
+        sessionStorage.setItem('digitalemdz_owner_user', JSON.stringify(user));
+        sessionStorage.setItem('digitalemdz_admin_auth', 'true');
+        localStorage.setItem('digitalemdz_admin_credentials', JSON.stringify({ email: data.email, passcode: cleanPass }));
+        localStorage.setItem('digitalemdz_owner_custom_pass', cleanPass);
+        showToast('تم تسجيل الدخول بنجاح من الحساب المركزي!', 'success');
+        setIsOwnerLoginModalOpen(false);
+        return true;
+      }
+      showToast(data.error || 'بيانات الدخول غير صحيحة.', 'error');
+      return false;
+    } catch {
+      showToast('تعذر الاتصال بخدمة الحساب المركزية.', 'error');
       return false;
     }
-
-    showToast('كلمة المرور غير صحيحة! يرجى التحقق وإعادة المحاولة.', 'error');
-    return false;
   };
 
   const logoutOwner = () => {
