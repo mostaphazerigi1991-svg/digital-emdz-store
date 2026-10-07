@@ -227,6 +227,7 @@ export const AdminDashboard: React.FC = () => {
   const [isAddingPayment, setIsAddingPayment] = useState(false);
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
   const paymentLogoInputRef = useRef<HTMLInputElement | null>(null);
+  const paymentIdentifierInputRef = useRef<HTMLInputElement | null>(null);
 
   const [paymentFormData, setPaymentFormData] = useState({
     name: '',
@@ -566,6 +567,12 @@ export const AdminDashboard: React.FC = () => {
       enabled: pm.enabled
     });
     setIsAddingPayment(true);
+
+    // Focus the actual payment number/ID so it can be changed immediately.
+    setTimeout(() => {
+      paymentIdentifierInputRef.current?.focus();
+      paymentIdentifierInputRef.current?.select();
+    }, 0);
   };
 
   const handleSavePaymentMethod = (e: React.FormEvent) => {
@@ -1599,14 +1606,14 @@ export const AdminDashboard: React.FC = () => {
 
                       {/* Quick Presets for Fast Setup */}
                       <div className="p-3.5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-2">
-                        <span className="text-xs font-bold text-slate-300 block">قوالب طرق الدفع الجاهزة للتعبئة السريعة:</span>
+                        <span className="text-xs font-bold text-slate-300 block">قوالب طرق الدفع الجاهزة — لا تغيّر رقم الحساب المحفوظ:</span>
                         <div className="flex items-center gap-2 flex-wrap">
                           <button
                             type="button"
                             onClick={() => setPaymentFormData({
                               name: 'BaridiMob / بريدي موب',
                               description: 'تحويل فوري ومباشر بالدينار الجزائري عبر تطبيق بريدي موب',
-                              accountIdentifier: 'RIP: 00799999000123456789 (ZERIGI MOSTAPHA)',
+                              accountIdentifier: paymentFormData.accountIdentifier,
                               instructions: 'قم بتحويل المبلغ المطلوب عبر تطبيق BaridiMob إلى رقم RIP الموضح أعلاه، ثم اضغط تأكيد الطلب لمراسلتنا برقم المعاملة وتلقي بياناتك فوراً.',
                               logo: 'https://images.unsplash.com/photo-1559526324-4b87b5e36e44?w=200&auto=format&fit=crop&q=80',
                               enabled: true
@@ -1621,7 +1628,7 @@ export const AdminDashboard: React.FC = () => {
                             onClick={() => setPaymentFormData({
                               name: 'Binance Pay (بينانس باي)',
                               description: 'دفع فوري سريع بالعملات الرقمية المشفرة وUSDT بدون أي رسوم',
-                              accountIdentifier: 'Binance Pay ID: 789456123 (USDT TRC20 / BEP20)',
+                              accountIdentifier: paymentFormData.accountIdentifier,
                               instructions: 'افتح تطبيق Binance ثم اضغط على Pay وأدخل المعرف أعلاه، بعد إتمام التحويل اضغط على تأكيد الطلب لاستلام التراخيص والحسابات فورياً.',
                               logo: 'https://images.unsplash.com/photo-1622979135225-d2ba269bc1df?w=200&auto=format&fit=crop&q=80',
                               enabled: true
@@ -1636,7 +1643,7 @@ export const AdminDashboard: React.FC = () => {
                             onClick={() => setPaymentFormData({
                               name: 'RedotPay (تطبيق ريدوت باي)',
                               description: 'تحويل داخلي مجاني وسريع جداً عبر تطبيق بطاقة RedotPay بالدولار',
-                              accountIdentifier: 'RedotPay ID: 198273645 (USD)',
+                              accountIdentifier: paymentFormData.accountIdentifier,
                               instructions: 'قم بفتح تطبيق RedotPay واختيار Send ثم أدخل المعرف الموضح أعلاه لإرسال المبلغ مجاناً، ثم اضغط تأكيد الطلب لاستلام المنتج.',
                               logo: 'https://images.unsplash.com/photo-1563013544-824ae1b704d3?w=200&auto=format&fit=crop&q=80',
                               enabled: true
@@ -1712,9 +1719,11 @@ export const AdminDashboard: React.FC = () => {
                           رقم الحساب / البريد / المعرف / المحفظة * (مع زر نسخ تلقائي للعميل)
                         </label>
                         <input
+                          ref={paymentIdentifierInputRef}
                           type="text"
                           required
-                          placeholder="مثال: RIP: 00799999000123456789 أو Binance Pay ID: 789456123 أو RedotPay ID: 198273645"
+                          autoComplete="off"
+                          placeholder="أدخل رقم RIP أو Binance Pay ID أو RedotPay ID"
                           value={paymentFormData.accountIdentifier}
                           onChange={(e) => setPaymentFormData({ ...paymentFormData, accountIdentifier: e.target.value })}
                           className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs font-mono text-cyan-300 font-bold focus:outline-none focus:border-emerald-500"
