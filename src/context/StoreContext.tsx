@@ -795,22 +795,30 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const loginOwner = (email: string, password: string): boolean => {
     const cleanEmail = email.trim().toLowerCase();
     const cleanPass = password.trim();
-    const isOwnerEmail = 
-      cleanEmail === 'admin@digitalemdz.com' || 
-      cleanEmail === 'admin' ||
-      cleanEmail === 'digitalemdz@gmail.com' ||
-      cleanEmail === 'owner@digitalemdz.com' ||
-      cleanEmail === adminCredentials.email.trim().toLowerCase();
 
-    const validPasswords = ['admin123', 'emdz2026'];
-    if (adminCredentials.passcode && adminCredentials.passcode.trim()) {
-      validPasswords.push(adminCredentials.passcode.trim());
-    }
-    const customPass = localStorage.getItem('digitalemdz_owner_custom_pass');
-    if (customPass) validPasswords.push(customPass);
+    // Always read the latest saved credentials from this browser.
+    // There are no hidden fallback passwords: after changing the password,
+    // only the newly saved credentials are accepted.
+    let saved = adminCredentials;
+    try {
+      const stored = localStorage.getItem('digitalemdz_admin_credentials');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.email && parsed?.passcode) {
+          saved = {
+            email: String(parsed.email).trim(),
+            passcode: String(parsed.passcode).trim(),
+          };
+        }
+      }
+    } catch {}
 
-    if (isOwnerEmail && validPasswords.includes(cleanPass)) {
-      const user = { email: adminCredentials.email || 'admin@digitalemdz.com', name: 'إدارة Digital Emdz' };
+    const isCorrectEmail = cleanEmail === saved.email.toLowerCase();
+    const isCorrectPassword = cleanPass === saved.passcode;
+
+    if (isCorrectEmail && isCorrectPassword) {
+      const user = { email: saved.email, name: 'إدارة Digital Emdz' };
+      setAdminCredentials(saved);
       setOwnerUser(user);
       setIsAdminAuthenticated(true);
       sessionStorage.setItem('digitalemdz_owner_user', JSON.stringify(user));
@@ -820,12 +828,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return true;
     }
 
-    if (!isOwnerEmail) {
-      showToast('بيانات الدخول غير صحيحة! يرجى التحقق وإعادة المحاولة.', 'error');
-      return false;
-    }
-
-    showToast('كلمة المرور غير صحيحة! يرجى التحقق وإعادة المحاولة.', 'error');
+    showToast(
+      !isCorrectEmail
+        ? 'البريد الإلكتروني غير صحيح! يرجى التحقق وإعادة المحاولة.'
+        : 'كلمة المرور غير صحيحة! يرجى التحقق وإعادة المحاولة.',
+      'error'
+    );
     return false;
   };
 
