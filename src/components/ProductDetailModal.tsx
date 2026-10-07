@@ -34,6 +34,9 @@ export const ProductDetailModal: React.FC = () => {
     setProductToDelete
   } = useStore();
 
+  const isPublicView = new URLSearchParams(window.location.search).get('public') === '1';
+  const canShowOwner = Boolean(ownerUser || isAdminAuthenticated) && !isPublicView;
+
   const [activeTab, setActiveTab] = useState<'overview' | 'features' | 'delivery' | 'faq'>('overview');
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
 
@@ -42,7 +45,7 @@ export const ProductDetailModal: React.FC = () => {
   const product = selectedProduct;
 
   const handleShare = async () => {
-    const url = `${window.location.origin}${window.location.pathname}?product=${encodeURIComponent(product.slug || product.id)}`;
+    const url = `${window.location.origin}${window.location.pathname}?product=${encodeURIComponent(product.slug || product.id)}&public=1`;
     try {
       if (navigator.share) {
         await navigator.share({
@@ -237,7 +240,7 @@ export const ProductDetailModal: React.FC = () => {
                 </button>
 
                 {/* Owner Only Edit & Delete Actions */}
-                {(ownerUser || isAdminAuthenticated) && (
+                {canShowOwner && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                     <button
                       onClick={() => {
