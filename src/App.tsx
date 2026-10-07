@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { StoreProvider, useStore } from './context/StoreContext';
 import { Header } from './components/Header';
 import { Hero } from './components/Hero';
@@ -24,7 +24,20 @@ import { ServiceRequestModal } from './components/ServiceRequestModal';
 import { MobileBottomNav } from './components/MobileBottomNav';
 
 const MainStoreContent: React.FC = () => {
-  const { setSelectedCategory } = useStore();
+  const { products, setSelectedCategory, setSelectedProduct } = useStore();
+
+  useEffect(() => {
+    const productKey = new URLSearchParams(window.location.search).get('product');
+    if (!productKey) return;
+
+    const sharedProduct = products.find(
+      product => product.id === productKey || product.slug === productKey
+    );
+
+    if (sharedProduct) {
+      setSelectedProduct(sharedProduct);
+    }
+  }, [products, setSelectedProduct]);
 
   const handleNavigateSection = (sectionId: string) => {
     const el = document.getElementById(sectionId);
