@@ -188,15 +188,8 @@ export const AdminDashboard: React.FC = () => {
     setAdminEmailInput(adminCredentials.email);
   }, [adminCredentials]);
 
-  // Remove legacy placeholder payment IDs from the saved browser data as soon as the admin panel opens.
-  useEffect(() => {
-    paymentMethods.forEach((pm) => {
-      const safe = getSafePaymentIdentifier(pm);
-      if (pm.accountIdentifier.trim() && !safe) {
-        updatePaymentMethod({ ...pm, accountIdentifier: '' });
-      }
-    });
-  }, [paymentMethods]);
+  // Payment identifiers are persisted by StoreContext when they are saved.
+  // Do not run a broad cleanup effect here, because it could overwrite a newly entered ID.
 
 
   // -------------------------------------------------------------
