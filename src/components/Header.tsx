@@ -12,7 +12,8 @@ import {
   Plus,
   Lock,
   Crown,
-  Wrench
+  Wrench,
+  Share2
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 
@@ -48,6 +49,22 @@ export const Header: React.FC<HeaderProps> = ({ onNavigateSection }) => {
     setSelectedCategory(cat);
     setMobileMenuOpen(false);
     onNavigateSection('products-section');
+  };
+
+  const handleShareSite = async () => {
+    const url = window.location.origin + window.location.pathname;
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: storeSettings.storeName,
+          text: 'اكتشف متجر Digital Emdz للمنتجات والاشتراكات الرقمية',
+          url
+        });
+      } else if (navigator.clipboard) {
+        await navigator.clipboard.writeText(url);
+        alert('تم نسخ رابط الموقع للمشاركة');
+      }
+    } catch {}
   };
 
   return (
@@ -154,6 +171,16 @@ export const Header: React.FC<HeaderProps> = ({ onNavigateSection }) => {
 
           {/* Right Header Actions */}
           <div className="flex items-center gap-2 sm:gap-2.5">
+            {/* Share Store Button */}
+            <button
+              onClick={handleShareSite}
+              aria-label="مشاركة رابط الموقع"
+              title="مشاركة رابط الموقع"
+              className="p-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/80 transition-all border border-transparent hover:border-slate-700"
+            >
+              <Share2 className="w-5 h-5" />
+            </button>
+
             {/* Search Icon */}
             <button
               onClick={() => setIsSearchModalOpen(true)}
