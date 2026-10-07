@@ -182,7 +182,7 @@ export const ProductDetailModal: React.FC = () => {
                     aria-label="مشاركة رابط المنتج"
                     className="shrink-0 w-10 h-10 rounded-xl bg-slate-800 hover:bg-indigo-600/80 text-slate-200 hover:text-white border border-slate-700 hover:border-indigo-500 transition-all flex items-center justify-center"
                   >
-                    <Share2 className="w-4 h-4 text-cyan-400" />
+                    <Share2 className="w-4 h-4 text-white" />
                   </button>
 
                   <div>
