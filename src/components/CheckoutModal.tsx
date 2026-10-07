@@ -430,8 +430,14 @@ export const CheckoutModal: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => {
-                            navigator.clipboard.writeText(getPaymentIdentifier(activeMethodObj));
-                            showToast('تم نسخ المعرف لحافظتك بنجاح!', 'success');
+navigator.clipboard.writeText(
+  getPaymentIdentifier(activeMethodObj)
+    .replace(/^RedotPay ID:\s*/i, '')
+    .replace(/^Binance Pay ID:\s*/i, '')
+    .replace(/^RIP:\s*/i, '')
+    .split('(')[0]
+    .trim()
+);                            showToast('تم نسخ المعرف لحافظتك بنجاح!', 'success');
                           }}
                           className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-sans text-xs font-bold transition-colors cursor-pointer shrink-0"
                         >
