@@ -6,6 +6,7 @@ import {
   INITIAL_STORE_SETTINGS,
   INITIAL_DYNAMIC_PAYMENT_METHODS
 } from '../data/initialData';
+import { loadProductCatalog, saveProductCatalog } from '../utils/productStorage';
 import { 
   CartItem, 
   CategoryInfo, 
@@ -193,15 +194,51 @@ const writeCloudPaymentMethods = async (methods: DynamicPaymentMethod[]): Promis
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Products
+  // Keep the catalog in IndexedDB so product images and larger catalogs do not
+  // hit the browser's small localStorage quota. localStorage remains a lightweight
+  // fallback for older browsers/data.
   const [products, setProducts] = useState<Product[]>(() => {
     try {
       const saved = localStorage.getItem('digitalemdz_products');
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
     } catch {
       // fallback
     }
     return INITIAL_PRODUCTS;
   });
+
+  const [productCatalogReady, setProductCatalogReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadCatalog = async () => {
+      const stored = await loadProductCatalog<Product>();
+      if (cancelled) return;
+
+      if (Array.isArray(stored)) {
+        setProducts(stored);
+        try {
+          localStorage.setItem('digitalemdz_products', JSON.stringify(stored));
+        } catch {
+          // IndexedDB is the durable source; localStorage is only a fallback.
+        }
+      } else {
+        await saveProductCatalog(products);
+      }
+
+      if (!cancelled) setProductCatalogReady(true);
+    };
+
+    void loadCatalog();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Orders
   const [orders, setOrders] = useState<Order[]>(() => {
@@ -522,10 +559,19 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [activePolicy, setActivePolicy] = useState<'privacy' | 'terms' | 'refund' | 'faq' | null>(null);
   const [toasts, setToasts] = useState<ToastInfo[]>([]);
 
-  // Sync products to local storage
+  // Persist every catalog change. IndexedDB is the primary store; localStorage
+  // is kept only as a small compatibility fallback and is allowed to fail safely.
   useEffect(() => {
-    localStorage.setItem('digitalemdz_products', JSON.stringify(products));
-  }, [products]);
+    if (!productCatalogReady) return;
+
+    void saveProductCatalog(products);
+
+    try {
+      localStorage.setItem('digitalemdz_products', JSON.stringify(products));
+    } catch {
+      // Do not break add/edit/delete when localStorage is full.
+    }
+  }, [products, productCatalogReady]);
 
   // Sync orders to local storage
   useEffect(() => {
@@ -776,16 +822,22 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const addProduct = (
     productData: Omit<Product, 'id' | 'createdAt' | 'rating' | 'salesCount'>
   ) => {
-    const id = productData.slug || `prod-${Date.now()}`;
+    const baseId = productData.slug?.trim() || `prod-${Date.now()}`;
     const newProduct: Product = {
       ...productData,
-      id,
+      id: baseId,
       rating: 5.0,
       salesCount: 1,
       isPublished: productData.isPublished !== false,
       createdAt: new Date().toISOString(),
     };
-    setProducts((prev) => [newProduct, ...prev]);
+    setProducts((prev) => {
+      // Never overwrite an existing product accidentally when a slug is reused.
+      const id = prev.some(p => p.id === newProduct.id)
+        ? `prod-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+        : newProduct.id;
+      return [{ ...newProduct, id }, ...prev];
+    });
     showToast(`تمت إضافة منتج "${newProduct.name}" بنجاح!`, 'success');
   };
 
@@ -797,7 +849,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteProduct = (productId: string) => {
-    setProducts((prev) => prev.filter((p) => p.id !== productId));
+    setProducts((prev) => {
+      const next = prev.filter((p) => p.id !== productId);
+      return next;
+    });
+    setCart(prev => prev.filter(item => item.product.id !== productId));
+    setSelectedProduct(prev => prev?.id === productId ? null : prev);
+    setCheckoutProduct(prev => prev?.id === productId ? null : prev);
     showToast('تم حذف المنتج بنجاح', 'info');
   };
 
@@ -837,7 +895,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const resetProductsToDefault = () => {
     setProducts(INITIAL_PRODUCTS);
-    localStorage.setItem('digitalemdz_products', JSON.stringify(INITIAL_PRODUCTS));
+    void saveProductCatalog(INITIAL_PRODUCTS);
+    try {
+      localStorage.setItem('digitalemdz_products', JSON.stringify(INITIAL_PRODUCTS));
+    } catch {
+      // IndexedDB remains the durable copy.
+    }
     showToast('تمت استعادة كتالوج المنتجات الأصلي', 'info');
   };
 
