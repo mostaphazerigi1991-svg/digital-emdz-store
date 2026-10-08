@@ -1,22 +1,24 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { 
-  CATEGORIES, 
-  INITIAL_COUPONS, 
-  INITIAL_PRODUCTS, 
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import {
+  CATEGORIES,
+  INITIAL_COUPONS,
+  INITIAL_PRODUCTS,
   INITIAL_STORE_SETTINGS,
   INITIAL_DYNAMIC_PAYMENT_METHODS
 } from '../data/initialData';
-import { loadProductCatalog, saveProductCatalog } from '../utils/productStorage';
-import { 
-  CartItem, 
-  CategoryInfo, 
-  Coupon, 
+import { loadProductCatalog } from '../utils/productStorage';
+import { PERSIST_KEYS, requestPersistentStorage } from '../utils/persistence';
+import { usePersistentState } from '../utils/usePersistentState';
+import {
+  CartItem,
+  CategoryInfo,
+  Coupon,
   DynamicPaymentMethod,
-  Order, 
+  Order,
   OrderStatus,
   PaymentStatus,
-  Product, 
-  ProductCategory, 
+  Product,
+  ProductCategory,
   StoreSettings,
   ServiceRequest
 } from '../types';
@@ -27,6 +29,8 @@ interface ToastInfo {
   type: 'success' | 'error' | 'info';
 }
 
+type AdminTab = 'products' | 'orders' | 'payments' | 'coupons' | 'settings';
+
 interface StoreContextType {
   products: Product[];
   categories: CategoryInfo[];
@@ -34,7 +38,7 @@ interface StoreContextType {
   setSelectedCategory: (cat: ProductCategory | 'all') => void;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
-  
+
   // Cart
   cart: CartItem[];
   addToCart: (product: Product, quantity?: number, openCart?: boolean) => void;
@@ -96,13 +100,13 @@ interface StoreContextType {
   // Admin & Owner
   isAdminOpen: boolean;
   setIsAdminOpen: (open: boolean) => void;
-  adminActiveTab: 'products' | 'orders' | 'payments' | 'coupons' | 'settings';
-  setAdminActiveTab: (tab: 'products' | 'orders' | 'payments' | 'coupons' | 'settings') => void;
-  openAdminWithTab: (tab?: 'products' | 'orders' | 'payments' | 'coupons' | 'settings') => void;
+  adminActiveTab: AdminTab;
+  setAdminActiveTab: (tab: AdminTab) => void;
+  openAdminWithTab: (tab?: AdminTab) => void;
   isAdminAuthenticated: boolean;
   loginAdmin: (passcode: string) => boolean;
   logoutAdmin: () => void;
-  
+
   // Dedicated Owner System
   ownerUser: { email: string; name: string } | null;
   loginOwner: (email: string, password: string) => boolean;
@@ -153,9 +157,110 @@ const ADMIN_PASSCODE = 'admin123'; // Default secure passcode for store manager
 const OWNER_BROWSER_KEY = 'digitalemdz_owner_browser';
 const OWNER_BOOTSTRAP_PARAM = 'owner';
 
+// ---------------------------------------------------------------------------
+// Legacy localStorage keys (read ONCE for migration, never used afterwards).
+// Once a value exists in the central store, these can never override it.
+// ---------------------------------------------------------------------------
+const LEGACY_KEYS = {
+  products: 'digitalemdz_products',
+  orders: 'digitalemdz_orders',
+  settings: 'digitalemdz_settings',
+  coupons: 'digitalemdz_coupons',
+  cart: 'digitalemdz_cart',
+  paymentMethods: 'digitalemdz_payment_methods',
+  serviceRequests: 'digitalemdz_service_requests',
+  adminCredentials: 'digitalemdz_admin_credentials',
+} as const;
+
+const readLegacyLocalStorage = <T,>(key: string, guard: (x: unknown) => x is T) => async (): Promise<T | null> => {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    return guard(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const isArray = <T,>(x: unknown): x is T[] => Array.isArray(x);
+const isNonEmptyArray = <T,>(x: unknown): x is T[] => Array.isArray(x) && x.length > 0;
+const isCredentials = (x: unknown): x is { email: string; passcode: string } =>
+  !!x && typeof x === 'object' &&
+  typeof (x as { email?: unknown }).email === 'string' &&
+  typeof (x as { passcode?: unknown }).passcode === 'string';
+
+const legacyProducts = async (): Promise<Product[] | null> => {
+  try {
+    // The old IndexedDB catalog was the primary store of the previous version.
+    const stored = await loadProductCatalog<Product>();
+    if (Array.isArray(stored)) return stored;
+  } catch {
+    // fall through to localStorage
+  }
+  return readLegacyLocalStorage<Product[]>(LEGACY_KEYS.products, isArray)();
+};
+
+const REQUIRED_TEXT_SETTINGS = [
+  'storeName', 'currency', 'heroTitle', 'heroSubtitle', 'heroCta1Text',
+  'heroCta2Text', 'whatsappNumber', 'whatsappMessage', 'supportEmail',
+] as const;
+const PREVIOUS_WRONG_WHATSAPP = '+2137709139434';
+
+/**
+ * Fills fields that are MISSING (e.g. settings added in a newer app version) from the defaults.
+ * It never replaces a value the admin saved, except blank required fields and the known-wrong WhatsApp number.
+ */
+const normalizeSettings = (stored: unknown): StoreSettings => {
+  const p = (stored && typeof stored === 'object' ? stored : {}) as Partial<StoreSettings>;
+  const merged: StoreSettings = {
+    ...INITIAL_STORE_SETTINGS,
+    ...p,
+    faqs: Array.isArray(p.faqs) ? p.faqs : INITIAL_STORE_SETTINGS.faqs,
+    paymentMethods: {
+      ...INITIAL_STORE_SETTINGS.paymentMethods,
+      ...(p.paymentMethods || {}),
+    },
+  };
+  const m = merged as unknown as Record<string, unknown>;
+  const d = INITIAL_STORE_SETTINGS as unknown as Record<string, unknown>;
+  REQUIRED_TEXT_SETTINGS.forEach((k) => {
+    if (!String(m[k] ?? '').trim()) m[k] = d[k];
+  });
+  if (merged.whatsappNumber === PREVIOUS_WRONG_WHATSAPP) {
+    merged.whatsappNumber = INITIAL_STORE_SETTINGS.whatsappNumber;
+  }
+  return merged;
+};
+
+const DEFAULT_SERVICE_REQUESTS: ServiceRequest[] = [
+  {
+    id: 'REQ-101',
+    customerName: 'أحمد بن علي',
+    customerEmail: 'ahmed@example.com',
+    customerPhone: '0550123456',
+    serviceTitle: 'تفعيل حساب بنكي دولي ومرافقة RedotPay',
+    description: 'أريد مساعدة في تفعيل بطاقة RedotPay وربطها للشراء من الإنترنت مع شحن 10 دولار.',
+    budget: '3500 د.ج',
+    status: 'new',
+    createdAt: '2026-02-01T12:00:00Z'
+  }
+];
+
+const DEFAULT_ADMIN_CREDENTIALS = { email: 'mostaphazerigi1991@gmail.com', passcode: 'mostapha1991' };
+
+// ---------------------------------------------------------------------------
+// Cross-device payment configuration (best-effort mirror of the local save).
+// The LOCAL (verified) save is the source of truth for the success message.
+// ---------------------------------------------------------------------------
 const PAYMENT_CLOUD_URL = 'https://jsoning.com/api/digitalemdz_store_payment_config_7f3c9a2d/payment_methods';
 
-const readCloudPaymentMethods = async (): Promise<DynamicPaymentMethod[] | null> => {
+interface CloudPayload {
+  updatedAt: number;
+  methods: DynamicPaymentMethod[];
+}
+
+const readCloudPaymentMethods = async (): Promise<CloudPayload | null> => {
   try {
     const response = await fetch(PAYMENT_CLOUD_URL, {
       method: 'GET',
@@ -163,8 +268,13 @@ const readCloudPaymentMethods = async (): Promise<DynamicPaymentMethod[] | null>
       cache: 'no-store',
     });
     if (!response.ok) return null;
-    const data = await response.json();
-    return Array.isArray(data) ? data : null;
+    const data: unknown = await response.json();
+    // Legacy format: a bare array without a version.
+    if (Array.isArray(data)) return { updatedAt: 0, methods: data as DynamicPaymentMethod[] };
+    if (data && typeof data === 'object' && Array.isArray((data as CloudPayload).methods)) {
+      return { updatedAt: Number((data as CloudPayload).updatedAt) || 0, methods: (data as CloudPayload).methods };
+    }
+    return null;
   } catch {
     return null;
   }
@@ -179,12 +289,12 @@ const isPlaceholderPaymentIdentifier = (method: DynamicPaymentMethod) => {
   return false;
 };
 
-const writeCloudPaymentMethods = async (methods: DynamicPaymentMethod[]): Promise<boolean> => {
+const writeCloudPaymentMethods = async (payload: CloudPayload): Promise<boolean> => {
   try {
     const response = await fetch(PAYMENT_CLOUD_URL, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(methods),
+      body: JSON.stringify(payload),
     });
     return response.ok;
   } catch {
@@ -193,234 +303,161 @@ const writeCloudPaymentMethods = async (methods: DynamicPaymentMethod[]): Promis
 };
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Products
-  // Keep the catalog in IndexedDB so product images and larger catalogs do not
-  // hit the browser's small localStorage quota. localStorage remains a lightweight
-  // fallback for older browsers/data.
-  const [products, setProducts] = useState<Product[]>(() => {
-    try {
-      const saved = localStorage.getItem('digitalemdz_products');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch {
-      // fallback
-    }
-    return INITIAL_PRODUCTS;
-  });
-
-  const [productCatalogReady, setProductCatalogReady] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadCatalog = async () => {
-      try {
-        // IndexedDB is the primary catalog because product images can make
-        // localStorage exceed the browser quota. localStorage is only fallback.
-        const stored = await loadProductCatalog<Product>();
-
-        if (Array.isArray(stored) && !cancelled) {
-          setProducts(stored);
-          try {
-            localStorage.setItem('digitalemdz_products', JSON.stringify(stored));
-          } catch {}
-        } else {
-          const saved = localStorage.getItem('digitalemdz_products');
-          const parsed = saved ? JSON.parse(saved) : null;
-
-          if (Array.isArray(parsed) && !cancelled) {
-            setProducts(parsed);
-            await saveProductCatalog<Product>(parsed);
-          } else if (!cancelled) {
-            setProducts(INITIAL_PRODUCTS);
-            await saveProductCatalog<Product>(INITIAL_PRODUCTS);
-          }
-        }
-      } catch {
-        if (!cancelled) {
-          setProducts(INITIAL_PRODUCTS);
-        }
-      }
-
-      if (!cancelled) {
-        setProductCatalogReady(true);
-      }
-    };
-
-    void loadCatalog();
-
-    return () => {
-      cancelled = true;
-    };
+  // ---- Toasts (declared first: the persistence layer reports through them) ----
+  const [toasts, setToasts] = useState<ToastInfo[]>([]);
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    const id = Math.random().toString(36).substring(2, 9);
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, type === 'error' ? 8000 : 3800);
   }, []);
 
-  // Orders
-  const [orders, setOrders] = useState<Order[]>(() => {
-    try {
-      const saved = localStorage.getItem('digitalemdz_orders');
-      if (saved) return JSON.parse(saved);
-    } catch {
-      // fallback
-    }
-    return [];
+  // =========================================================================
+  // CENTRAL PERSISTENCE
+  // Every admin-editable dataset is one usePersistentState(...) below.
+  // To make a NEW setting persistent: add a key in utils/persistence.ts
+  // (PERSIST_KEYS), add one usePersistentState here, and mutate it only via
+  // its `commit(...)`. Nothing else is required.
+  // =========================================================================
+  const productsStore = usePersistentState<Product[]>(PERSIST_KEYS.products, {
+    defaults: INITIAL_PRODUCTS,
+    legacy: legacyProducts,
+    normalize: (x) => (Array.isArray(x) ? (x as Product[]) : INITIAL_PRODUCTS),
+    notify: showToast,
+    label: 'المنتجات',
+  });
+  const ordersStore = usePersistentState<Order[]>(PERSIST_KEYS.orders, {
+    defaults: [],
+    legacy: readLegacyLocalStorage<Order[]>(LEGACY_KEYS.orders, isArray),
+    normalize: (x) => (Array.isArray(x) ? (x as Order[]) : []),
+    notify: showToast,
+    label: 'الطلبات',
+  });
+  const settingsStore = usePersistentState<StoreSettings>(PERSIST_KEYS.settings, {
+    defaults: INITIAL_STORE_SETTINGS,
+    legacy: readLegacyLocalStorage<StoreSettings>(
+      LEGACY_KEYS.settings,
+      (x): x is StoreSettings => !!x && typeof x === 'object' && !Array.isArray(x),
+    ),
+    normalize: normalizeSettings,
+    notify: showToast,
+    label: 'إعدادات المتجر',
+  });
+  const couponsStore = usePersistentState<Coupon[]>(PERSIST_KEYS.coupons, {
+    defaults: INITIAL_COUPONS,
+    legacy: readLegacyLocalStorage<Coupon[]>(LEGACY_KEYS.coupons, isArray),
+    normalize: (x) => (Array.isArray(x) ? (x as Coupon[]) : INITIAL_COUPONS),
+    notify: showToast,
+    label: 'أكواد الخصم',
+  });
+  const cartStore = usePersistentState<CartItem[]>(PERSIST_KEYS.cart, {
+    defaults: [],
+    legacy: readLegacyLocalStorage<CartItem[]>(LEGACY_KEYS.cart, isArray),
+    normalize: (x) => (Array.isArray(x) ? (x as CartItem[]) : []),
+    notify: showToast,
+    label: 'السلة',
+  });
+  const paymentsStore = usePersistentState<DynamicPaymentMethod[]>(PERSIST_KEYS.paymentMethods, {
+    defaults: INITIAL_DYNAMIC_PAYMENT_METHODS,
+    legacy: readLegacyLocalStorage<DynamicPaymentMethod[]>(LEGACY_KEYS.paymentMethods, isNonEmptyArray),
+    // An empty list that the admin saved on purpose is respected (nothing is silently re-added).
+    normalize: (x) => (Array.isArray(x) ? (x as DynamicPaymentMethod[]) : INITIAL_DYNAMIC_PAYMENT_METHODS),
+    notify: showToast,
+    label: 'طرق الدفع',
+  });
+  const requestsStore = usePersistentState<ServiceRequest[]>(PERSIST_KEYS.serviceRequests, {
+    defaults: DEFAULT_SERVICE_REQUESTS,
+    legacy: readLegacyLocalStorage<ServiceRequest[]>(LEGACY_KEYS.serviceRequests, isArray),
+    normalize: (x) => (Array.isArray(x) ? (x as ServiceRequest[]) : DEFAULT_SERVICE_REQUESTS),
+    notify: showToast,
+    label: 'طلبات الخدمات',
+  });
+  const credentialsStore = usePersistentState<{ email: string; passcode: string }>(PERSIST_KEYS.adminCredentials, {
+    defaults: DEFAULT_ADMIN_CREDENTIALS,
+    legacy: readLegacyLocalStorage(LEGACY_KEYS.adminCredentials, isCredentials),
+    normalize: (x) => (isCredentials(x) ? x : DEFAULT_ADMIN_CREDENTIALS),
+    notify: showToast,
+    label: 'بيانات دخول المدير',
   });
 
-  // Settings
-  const [storeSettings, setStoreSettings] = useState<StoreSettings>(() => {
-    try {
-      const saved = localStorage.getItem('digitalemdz_settings');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return {
-          ...INITIAL_STORE_SETTINGS,
-          ...(parsed || {}),
-          storeName: parsed?.storeName || INITIAL_STORE_SETTINGS.storeName,
-          tagline: parsed?.tagline !== undefined ? parsed.tagline : INITIAL_STORE_SETTINGS.tagline,
-          logo: parsed?.logo !== undefined ? parsed.logo : INITIAL_STORE_SETTINGS.logo,
-          currency: parsed?.currency || INITIAL_STORE_SETTINGS.currency,
-          heroTitle: parsed?.heroTitle || INITIAL_STORE_SETTINGS.heroTitle,
-          heroSubtitle: parsed?.heroSubtitle || INITIAL_STORE_SETTINGS.heroSubtitle,
-          heroBadge: parsed?.heroBadge || INITIAL_STORE_SETTINGS.heroBadge,
-          heroCta1Text: parsed?.heroCta1Text || INITIAL_STORE_SETTINGS.heroCta1Text,
-          heroCta2Text: parsed?.heroCta2Text || INITIAL_STORE_SETTINGS.heroCta2Text,
-          whatsappNumber: INITIAL_STORE_SETTINGS.whatsappNumber,
-          whatsappMessage: parsed?.whatsappMessage || INITIAL_STORE_SETTINGS.whatsappMessage,
-          supportEmail: parsed?.supportEmail || INITIAL_STORE_SETTINGS.supportEmail,
-          phone: parsed?.phone || INITIAL_STORE_SETTINGS.phone,
-          address: parsed?.address || INITIAL_STORE_SETTINGS.address,
-          aboutText: parsed?.aboutText || INITIAL_STORE_SETTINGS.aboutText,
-          faqs: Array.isArray(parsed?.faqs) ? parsed.faqs : INITIAL_STORE_SETTINGS.faqs,
-          paymentMethods: {
-            ...INITIAL_STORE_SETTINGS.paymentMethods,
-            ...(parsed?.paymentMethods || {}),
-          },
-        };
-      }
-    } catch {
-      // fallback
-    }
-    return INITIAL_STORE_SETTINGS;
-  });
+  const products = productsStore.value;
+  const orders = ordersStore.value;
+  const storeSettings = settingsStore.value;
+  const coupons = couponsStore.value;
+  const cart = cartStore.value;
+  const paymentMethods = paymentsStore.value;
+  const serviceRequests = requestsStore.value;
+  const adminCredentials = credentialsStore.value;
 
+  const allReady =
+    productsStore.ready && ordersStore.ready && settingsStore.ready && couponsStore.ready &&
+    cartStore.ready && paymentsStore.ready && requestsStore.ready && credentialsStore.ready;
 
-  // Coupons
-  const [coupons, setCoupons] = useState<Coupon[]>(() => {
-    try {
-      const saved = localStorage.getItem('digitalemdz_coupons');
-      if (saved) return JSON.parse(saved);
-    } catch {
-      // fallback
-    }
-    return INITIAL_COUPONS;
-  });
+  // Ask the browser not to evict our database under storage pressure.
+  useEffect(() => {
+    void requestPersistentStorage();
+  }, []);
 
-  // Cart
-  const [cart, setCart] = useState<CartItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('digitalemdz_cart');
-      if (saved) return JSON.parse(saved);
-    } catch {
-      // fallback
-    }
-    return [];
-  });
-
-  // Dynamic Payment Methods
-  const [paymentMethods, setPaymentMethods] = useState<DynamicPaymentMethod[]>(() => {
-    try {
-      const saved = localStorage.getItem('digitalemdz_payment_methods');
-      if (saved) {
-        const parsed: DynamicPaymentMethod[] = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          // Verify that core payment methods (BaridiMob, Binance Pay, RedotPay) exist; merge if missing
-          const hasBaridi = parsed.some(p => p.id === 'baridimob' || p.name.includes('بريدي') || p.name.includes('Baridi'));
-          const hasBinance = parsed.some(p => p.id === 'binance_pay' || p.name.toLowerCase().includes('binance'));
-          const hasRedot = parsed.some(p => p.id === 'redotpay' || p.name.toLowerCase().includes('redot'));
-          
-          let merged = [...parsed];
-          if (!hasBaridi) {
-            const baridi = INITIAL_DYNAMIC_PAYMENT_METHODS.find(p => p.id === 'baridimob');
-            if (baridi) merged.push(baridi);
-          }
-          if (!hasBinance) {
-            const binance = INITIAL_DYNAMIC_PAYMENT_METHODS.find(p => p.id === 'binance_pay');
-            if (binance) merged.push(binance);
-          }
-          if (!hasRedot) {
-            const redot = INITIAL_DYNAMIC_PAYMENT_METHODS.find(p => p.id === 'redotpay');
-            if (redot) merged.push(redot);
-          }
-          return merged;
-        }
-      }
-    } catch {
-      // fallback
-    }
-    return INITIAL_DYNAMIC_PAYMENT_METHODS;
-  });
-
-  // Payment methods are synchronized to a shared cloud JSON store so the
-  // same IDs appear on every browser/device, not only in this browser's localStorage.
+  // ---- Shared cloud copy of payment methods ----
   const [paymentCloudReady, setPaymentCloudReady] = useState(false);
+  const paymentsRef = useRef(paymentsStore);
+  paymentsRef.current = paymentsStore;
+  const lastPushedStamp = useRef(0);
+  const cloudWarned = useRef(false);
 
   useEffect(() => {
+    if (!paymentsStore.ready || paymentCloudReady) return;
     let cancelled = false;
 
-    const loadSharedPaymentMethods = async () => {
-      const cloudMethods = await readCloudPaymentMethods();
+    (async () => {
+      const cloud = await readCloudPaymentMethods();
       if (cancelled) return;
+      const local = paymentsRef.current;
 
-      if (Array.isArray(cloudMethods) && cloudMethods.length > 0) {
-        // Never let an empty/placeholder cloud record erase a real payment ID
-        // already saved in this owner's browser. This was the cause of IDs
-        // disappearing after checkout/admin pages loaded.
-        // Merge cloud + local by payment ID. Cloud keeps the shared method settings,
-        // while a real identifier already saved locally always wins over an empty/placeholder one.
-        const byId = new Map<string, DynamicPaymentMethod>();
-        paymentMethods.forEach(localMethod => byId.set(localMethod.id, localMethod));
-        cloudMethods.forEach(cloudMethod => {
-          const localMethod = byId.get(cloudMethod.id);
-          if (localMethod && !isPlaceholderPaymentIdentifier(localMethod)) {
-            byId.set(cloudMethod.id, {
-              ...cloudMethod,
-              accountIdentifier: localMethod.accountIdentifier,
-            });
-          } else {
-            byId.set(cloudMethod.id, cloudMethod);
-          }
-        });
-        const merged = Array.from(byId.values()).sort((a, b) => a.order - b.order);
-        setPaymentMethods(merged);
-        localStorage.setItem('digitalemdz_payment_methods', JSON.stringify(merged));
-        // Push the merged configuration so other browsers receive the real IDs too.
-        await writeCloudPaymentMethods(merged);
-      } else {
-        // First-time setup: publish the current/default methods so every device
-        // starts from the same shared configuration.
-        await writeCloudPaymentMethods(paymentMethods);
+      if (cloud && cloud.methods.length > 0 && cloud.updatedAt > local.updatedAt) {
+        // The cloud copy is strictly NEWER than what this browser saved: adopt it,
+        // but never replace a real local identifier with an empty/placeholder one.
+        const localById = new Map(local.getLatest().map((m) => [m.id, m]));
+        const merged = cloud.methods
+          .map((cm) => {
+            const lm = localById.get(cm.id);
+            return lm && isPlaceholderPaymentIdentifier(cm) && !isPlaceholderPaymentIdentifier(lm)
+              ? { ...cm, accountIdentifier: lm.accountIdentifier }
+              : cm;
+          })
+          .sort((a, b) => a.order - b.order);
+        await local.commit(merged);
+      } else if (local.updatedAt > 0) {
+        // Local data is newer (or the cloud is unreachable/empty): publish what the admin saved.
+        // Never publish untouched defaults/placeholders (updatedAt === 0).
+        if (await writeCloudPaymentMethods({ updatedAt: local.updatedAt, methods: local.getLatest() })) {
+          lastPushedStamp.current = local.updatedAt;
+        }
       }
-
       if (!cancelled) setPaymentCloudReady(true);
-    };
-
-    loadSharedPaymentMethods();
+    })();
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [paymentsStore.ready, paymentCloudReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Push every later (already locally verified) change to the cloud copy.
   useEffect(() => {
-    localStorage.setItem('digitalemdz_payment_methods', JSON.stringify(paymentMethods));
-
     if (!paymentCloudReady) return;
+    const stamp = paymentsStore.updatedAt;
+    if (stamp <= lastPushedStamp.current) return;
+    lastPushedStamp.current = stamp;
+    void writeCloudPaymentMethods({ updatedAt: stamp, methods: paymentsStore.getLatest() }).then((ok) => {
+      if (!ok && !cloudWarned.current) {
+        cloudWarned.current = true;
+        showToast('تم حفظ طرق الدفع على هذا المتصفح، لكن تعذّرت مزامنتها مع باقي الأجهزة.', 'info');
+      }
+    });
+  }, [paymentsStore.updatedAt, paymentCloudReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    void writeCloudPaymentMethods(paymentMethods);
-  }, [paymentMethods, paymentCloudReady]);
-
-  // Active filters and views
+  // ---- Active filters and views (UI-only state, intentionally not persisted) ----
   const [selectedCategory, setSelectedCategory] = useState<ProductCategory | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
@@ -446,12 +483,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
       return localStorage.getItem(OWNER_BROWSER_KEY) === 'true' && localStorage.getItem('digitalemdz_admin_auth') !== 'logged_out';
     } catch {
-      return localStorage.getItem('digitalemdz_admin_auth') === 'true';
+      return false;
     }
   });
-  const [adminActiveTab, setAdminActiveTab] = useState<'products' | 'orders' | 'payments' | 'coupons' | 'settings'>('settings');
+  const [adminActiveTab, setAdminActiveTab] = useState<AdminTab>('settings');
 
-  const openAdminWithTab = (tab: 'products' | 'orders' | 'payments' | 'coupons' | 'settings' = 'settings') => {
+  const openAdminWithTab = (tab: AdminTab = 'settings') => {
     setAdminActiveTab(tab);
     setIsAdminOpen(true);
   };
@@ -469,9 +506,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch {}
   }, []);
 
-  // Keep the owner authenticated on the marked owner browser.
+  // Admin SESSION flags (who is logged in) stay in localStorage: they are not site data.
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
-    return localStorage.getItem('digitalemdz_admin_auth') === 'true' || localStorage.getItem(OWNER_BROWSER_KEY) === 'true';
+    try {
+      return localStorage.getItem('digitalemdz_admin_auth') === 'true' || localStorage.getItem(OWNER_BROWSER_KEY) === 'true';
+    } catch {
+      return false;
+    }
   });
   const [ownerUser, setOwnerUser] = useState<{ email: string; name: string } | null>(() => {
     try {
@@ -490,132 +531,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
   const [isProductEditorOpen, setIsProductEditorOpen] = useState(false);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
-
-  // Service Requests state
-  const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>(() => {
-    try {
-      const saved = localStorage.getItem('digitalemdz_service_requests');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return [
-      {
-        id: 'REQ-101',
-        customerName: 'أحمد بن علي',
-        customerEmail: 'ahmed@example.com',
-        customerPhone: '0550123456',
-        serviceTitle: 'تفعيل حساب بنكي دولي ومرافقة RedotPay',
-        description: 'أريد مساعدة في تفعيل بطاقة RedotPay وربطها للشراء من الإنترنت مع شحن 10 دولار.',
-        budget: '3500 د.ج',
-        status: 'new',
-        createdAt: '2026-02-01T12:00:00Z'
-      }
-    ];
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('digitalemdz_service_requests', JSON.stringify(serviceRequests));
-    } catch {}
-  }, [serviceRequests]);
-
   const [isServiceRequestModalOpen, setIsServiceRequestModalOpen] = useState(false);
-
-  const openServiceRequestModal = () => {
-    setIsServiceRequestModalOpen(true);
-  };
-
-  const createServiceRequest = (data: Omit<ServiceRequest, 'id' | 'createdAt' | 'status'>) => {
-    const newReq: ServiceRequest = {
-      id: `REQ-${Date.now().toString().slice(-4)}`,
-      ...data,
-      status: 'new',
-      createdAt: new Date().toISOString()
-    };
-    setServiceRequests(prev => [newReq, ...prev]);
-    showToast('تم استلام طلب الخدمة بنجاح! سيتواصل معك فريق العمل عبر واتساب.', 'success');
-    return newReq;
-  };
-
-  const updateServiceRequestStatus = (id: string, status: ServiceRequest['status']) => {
-    setServiceRequests(prev => prev.map(r => r.id === id ? { ...r, status } : r));
-    showToast('تم تحديث حالة طلب الخدمة بنجاح', 'info');
-  };
-
-  const deleteServiceRequest = (id: string) => {
-    setServiceRequests(prev => prev.filter(r => r.id !== id));
-    showToast('تم حذف طلب الخدمة', 'info');
-  };
-
-  // Custom Admin Credentials (Email & Password)
-  const [adminCredentials, setAdminCredentials] = useState<{ email: string; passcode: string }>(() => {
-    try {
-      const saved = localStorage.getItem('digitalemdz_admin_credentials');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return { email: 'mostaphazerigi1991@gmail.com', passcode: 'mostapha1991' };
-  });
-
-  const updateAdminCredentials = (newEmail: string, newPasscode: string): boolean => {
-    if (!newEmail.trim() || !newPasscode.trim()) {
-      showToast('يرجى كتابة البريد وكلمة المرور الجديدة', 'error');
-      return false;
-    }
-    const updated = { email: newEmail.trim(), passcode: newPasscode.trim() };
-    setAdminCredentials(updated);
-    setOwnerUser({ email: updated.email, name: 'إدارة متجر Digital Emdz' });
-    try {
-      localStorage.setItem('digitalemdz_admin_credentials', JSON.stringify(updated));
-      localStorage.setItem('digitalemdz_owner_custom_pass', updated.passcode);
-      localStorage.setItem('digitalemdz_owner_user', JSON.stringify({ email: updated.email, name: 'إدارة متجر Digital Emdz' }));
-      localStorage.setItem('digitalemdz_admin_auth', 'true');
-    } catch {}
-    showToast('تم تحديث البريد الإلكتروني وكلمة المرور بنجاح!', 'success');
-    return true;
-  };
   const [activePolicy, setActivePolicy] = useState<'privacy' | 'terms' | 'refund' | 'faq' | null>(null);
-  const [toasts, setToasts] = useState<ToastInfo[]>([]);
-
-  // Persist every catalog change. IndexedDB is the primary store; localStorage
-  // is kept only as a small compatibility fallback and is allowed to fail safely.
-  useEffect(() => {
-    if (!productCatalogReady) return;
-
-    void saveProductCatalog(products);
-
-    try {
-      localStorage.setItem('digitalemdz_products', JSON.stringify(products));
-    } catch {
-      // Do not break add/edit/delete when localStorage is full.
-    }
-  }, [products, productCatalogReady]);
-
-  // Sync orders to local storage
-  useEffect(() => {
-    localStorage.setItem('digitalemdz_orders', JSON.stringify(orders));
-  }, [orders]);
-
-  // Sync settings to local storage and migrate the previous incorrect WhatsApp number
-  useEffect(() => {
-    const previousWrongNumber = '+2137709139434';
-    if (storeSettings.whatsappNumber === previousWrongNumber) {
-      setStoreSettings(prev => ({
-        ...prev,
-        whatsappNumber: INITIAL_STORE_SETTINGS.whatsappNumber,
-      }));
-      return;
-    }
-    localStorage.setItem('digitalemdz_settings', JSON.stringify(storeSettings));
-  }, [storeSettings]);
-
-  // Sync coupons to local storage
-  useEffect(() => {
-    localStorage.setItem('digitalemdz_coupons', JSON.stringify(coupons));
-  }, [coupons]);
-
-  // Sync cart to local storage
-  useEffect(() => {
-    localStorage.setItem('digitalemdz_cart', JSON.stringify(cart));
-  }, [cart]);
 
   // Listen for admin query parameter (?admin=true or #admin) or keyboard shortcut (Ctrl+Shift+A)
   useEffect(() => {
@@ -637,23 +554,73 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, []);
 
-  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
-    const id = Math.random().toString(36).substring(2, 9);
-    setToasts((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 3800);
+  // ---------------------------------------------------------------------------
+  // Service requests
+  // ---------------------------------------------------------------------------
+  const openServiceRequestModal = () => {
+    setIsServiceRequestModalOpen(true);
   };
 
-  // Cart actions
+  const createServiceRequest = (data: Omit<ServiceRequest, 'id' | 'createdAt' | 'status'>) => {
+    const newReq: ServiceRequest = {
+      id: `REQ-${Date.now().toString().slice(-4)}`,
+      ...data,
+      status: 'new',
+      createdAt: new Date().toISOString()
+    };
+    void requestsStore.commit((prev) => [newReq, ...prev], {
+      successMessage: 'تم استلام طلب الخدمة بنجاح! سيتواصل معك فريق العمل عبر واتساب.',
+    });
+    return newReq;
+  };
+
+  const updateServiceRequestStatus = (id: string, status: ServiceRequest['status']) => {
+    void requestsStore.commit((prev) => prev.map((r) => (r.id === id ? { ...r, status } : r)), {
+      successMessage: 'تم تحديث حالة طلب الخدمة بنجاح',
+      successType: 'info',
+    });
+  };
+
+  const deleteServiceRequest = (id: string) => {
+    void requestsStore.commit((prev) => prev.filter((r) => r.id !== id), {
+      successMessage: 'تم حذف طلب الخدمة',
+      successType: 'info',
+    });
+  };
+
+  // ---------------------------------------------------------------------------
+  // Admin credentials
+  // ---------------------------------------------------------------------------
+  const updateAdminCredentials = (newEmail: string, newPasscode: string): boolean => {
+    if (!newEmail.trim() || !newPasscode.trim()) {
+      showToast('يرجى كتابة البريد وكلمة المرور الجديدة', 'error');
+      return false;
+    }
+    const updated = { email: newEmail.trim(), passcode: newPasscode.trim() };
+    const user = { email: updated.email, name: 'إدارة متجر Digital Emdz' };
+    // `true` = the input was valid and the save was started; the success toast appears only after it is verified.
+    void credentialsStore.commit(updated, {
+      successMessage: 'تم تحديث البريد الإلكتروني وكلمة المرور بنجاح!',
+    }).then((ok) => {
+      if (!ok) return;
+      setOwnerUser(user);
+      try {
+        localStorage.setItem('digitalemdz_owner_user', JSON.stringify(user));
+        localStorage.setItem('digitalemdz_admin_auth', 'true');
+      } catch {}
+    });
+    return true;
+  };
+
+  // ---------------------------------------------------------------------------
+  // Cart (persisted silently; errors are still reported)
+  // ---------------------------------------------------------------------------
   const addToCart = (product: Product, quantity = 1, openCart = true) => {
-    setCart((prev) => {
+    void cartStore.commit((prev) => {
       const existing = prev.find((item) => item.product.id === product.id);
       if (existing) {
         return prev.map((item) =>
-          item.product.id === product.id
-            ? { ...item, quantity: item.quantity + quantity }
-            : item
+          item.product.id === product.id ? { ...item, quantity: item.quantity + quantity } : item
         );
       }
       return [...prev, { product, quantity }];
@@ -665,7 +632,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const removeFromCart = (productId: string) => {
-    setCart((prev) => prev.filter((item) => item.product.id !== productId));
+    void cartStore.commit((prev) => prev.filter((item) => item.product.id !== productId));
     showToast('تم حذف العنصر من السلة', 'info');
   };
 
@@ -674,15 +641,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       removeFromCart(productId);
       return;
     }
-    setCart((prev) =>
-      prev.map((item) =>
-        item.product.id === productId ? { ...item, quantity } : item
-      )
+    void cartStore.commit((prev) =>
+      prev.map((item) => (item.product.id === productId ? { ...item, quantity } : item))
     );
   };
 
   const clearCart = () => {
-    setCart([]);
+    void cartStore.commit([]);
   };
 
   const startDirectCheckout = (product: Product) => {
@@ -693,10 +658,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Cart calculations
   const cartCount = cart.reduce((total, item) => total + item.quantity, 0);
-  const cartSubtotal = cart.reduce(
-    (total, item) => total + item.product.price * item.quantity,
-    0
-  );
+  const cartSubtotal = cart.reduce((total, item) => total + item.product.price * item.quantity, 0);
 
   const applyCoupon = (code: string) => {
     const trimmed = code.trim().toUpperCase();
@@ -714,20 +676,19 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     showToast('تم إلغاء كود الخصم', 'info');
   };
 
-  const cartDiscount = appliedCoupon
-    ? Math.round((cartSubtotal * appliedCoupon.discountPercent) / 100)
-    : 0;
-
+  const cartDiscount = appliedCoupon ? Math.round((cartSubtotal * appliedCoupon.discountPercent) / 100) : 0;
   const cartTotal = Math.max(0, cartSubtotal - cartDiscount);
 
+  // ---------------------------------------------------------------------------
   // Orders
+  // ---------------------------------------------------------------------------
   const createOrder = (orderData: Omit<Order, 'id' | 'createdAt'>): Order => {
     const newOrder: Order = {
       ...orderData,
       id: `EMDZ-${Date.now().toString().slice(-6)}-${Math.floor(100 + Math.random() * 900)}`,
       createdAt: new Date().toISOString(),
     };
-    setOrders((prev) => [newOrder, ...prev]);
+    void ordersStore.commit((prev) => [newOrder, ...prev]);
     setLatestCompletedOrder(newOrder);
     clearCart();
     setAppliedCoupon(null);
@@ -735,20 +696,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return newOrder;
   };
 
-  const updateOrderStatus = (
-    orderId: string, 
-    status: OrderStatus, 
-    paymentStatus?: PaymentStatus
-  ) => {
-    setOrders((prev) =>
-      prev.map((o) => {
-        if (o.id === orderId) {
-          const newPaymentStatus = paymentStatus || (status === 'paid' || status === 'completed' ? 'paid' : o.paymentStatus || 'pending');
-          return { ...o, status, paymentStatus: newPaymentStatus };
-        }
-        return o;
-      })
-    );
+  const updateOrderStatus = (orderId: string, status: OrderStatus, paymentStatus?: PaymentStatus) => {
     const statusLabels: Record<OrderStatus, string> = {
       new: 'جديد',
       pending_payment: 'في انتظار الدفع',
@@ -757,64 +705,67 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       completed: 'مكتمل',
       cancelled: 'ملغي',
     };
-    showToast(`تم تحديث حالة الطلب #${orderId} إلى "${statusLabels[status] || status}"`, 'success');
+    void ordersStore.commit(
+      (prev) =>
+        prev.map((o) => {
+          if (o.id !== orderId) return o;
+          const newPaymentStatus =
+            paymentStatus || (status === 'paid' || status === 'completed' ? 'paid' : o.paymentStatus || 'pending');
+          return { ...o, status, paymentStatus: newPaymentStatus };
+        }),
+      { successMessage: `تم تحديث حالة الطلب #${orderId} إلى "${statusLabels[status] || status}"` },
+    );
   };
 
   const deleteOrder = (orderId: string) => {
-    setOrders((prev) => prev.filter((o) => o.id !== orderId));
-    showToast(`تم حذف الطلب #${orderId} بنجاح`, 'info');
+    void ordersStore.commit((prev) => prev.filter((o) => o.id !== orderId), {
+      successMessage: `تم حذف الطلب #${orderId} بنجاح`,
+      successType: 'info',
+    });
   };
 
-  // Dynamic Payment Methods CRUD
+  // ---------------------------------------------------------------------------
+  // Dynamic payment methods CRUD
+  // ---------------------------------------------------------------------------
   const addPaymentMethod = (data: Omit<DynamicPaymentMethod, 'id' | 'order'>) => {
     const id = `pm-${Date.now()}`;
-    setPaymentMethods((prev) => {
-      const newMethod: DynamicPaymentMethod = {
-        ...data,
-        id,
-        order: prev.length + 1,
-      };
-      return [...prev, newMethod];
-    });
-    showToast(`تمت إضافة طريقة الدفع "${data.name}" بنجاح!`, 'success');
+    void paymentsStore.commit(
+      (prev) => [...prev, { ...data, id, order: prev.length + 1 }],
+      { successMessage: `تمت إضافة طريقة الدفع "${data.name}" بنجاح!` },
+    );
   };
 
   const updatePaymentMethod = (updated: DynamicPaymentMethod) => {
-    setPaymentMethods((prev) =>
-      prev.map((pm) => (pm.id === updated.id ? updated : pm))
-    );
-    showToast(`تم حفظ تعديل طريقة الدفع "${updated.name}" بنجاح!`, 'success');
+    void paymentsStore.commit((prev) => prev.map((pm) => (pm.id === updated.id ? updated : pm)), {
+      successMessage: `تم حفظ تعديل طريقة الدفع "${updated.name}" بنجاح!`,
+    });
   };
 
   const deletePaymentMethod = (id: string) => {
-    const method = paymentMethods.find((p) => p.id === id);
-    setPaymentMethods((prev) => prev.filter((pm) => pm.id !== id));
-    showToast(`تم حذف طريقة الدفع "${method?.name || id}"`, 'info');
+    const method = paymentsStore.getLatest().find((p) => p.id === id);
+    void paymentsStore.commit((prev) => prev.filter((pm) => pm.id !== id), {
+      successMessage: `تم حذف طريقة الدفع "${method?.name || id}"`,
+      successType: 'info',
+    });
   };
 
   const togglePaymentMethod = (id: string) => {
-    let nextState = false;
-    let methodName = '';
-    setPaymentMethods((prev) =>
-      prev.map((pm) => {
-        if (pm.id === id) {
-          nextState = !pm.enabled;
-          methodName = pm.name;
-          return { ...pm, enabled: !pm.enabled };
-        }
-        return pm;
-      })
-    );
-    showToast(
-      nextState
-        ? `تم تفعيل طريقة الدفع "${methodName}"`
-        : `تم تعطيل طريقة الدفع "${methodName}"`,
-      'info'
+    const method = paymentsStore.getLatest().find((p) => p.id === id);
+    if (!method) return;
+    const willEnable = !method.enabled;
+    void paymentsStore.commit(
+      (prev) => prev.map((pm) => (pm.id === id ? { ...pm, enabled: !pm.enabled } : pm)),
+      {
+        successMessage: willEnable
+          ? `تم تفعيل طريقة الدفع "${method.name}"`
+          : `تم تعطيل طريقة الدفع "${method.name}"`,
+        successType: 'info',
+      },
     );
   };
 
   const movePaymentMethod = (id: string, direction: 'up' | 'down') => {
-    setPaymentMethods((prev) => {
+    void paymentsStore.commit((prev) => {
       const index = prev.findIndex((p) => p.id === id);
       if (index === -1) return prev;
       if (direction === 'up' && index === 0) return prev;
@@ -830,14 +781,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const resetPaymentMethodsToDefault = () => {
-    setPaymentMethods(INITIAL_DYNAMIC_PAYMENT_METHODS);
-    showToast('تمت استعادة طرق الدفع الافتراضية بنجاح', 'info');
+    void paymentsStore.commit(INITIAL_DYNAMIC_PAYMENT_METHODS, {
+      successMessage: 'تمت استعادة طرق الدفع الافتراضية بنجاح',
+      successType: 'info',
+    });
   };
 
+  // ---------------------------------------------------------------------------
   // Product CRUD
-  const addProduct = (
-    productData: Omit<Product, 'id' | 'createdAt' | 'rating' | 'salesCount'>
-  ) => {
+  // ---------------------------------------------------------------------------
+  const addProduct = (productData: Omit<Product, 'id' | 'createdAt' | 'rating' | 'salesCount'>) => {
     const baseId = productData.slug?.trim() || `prod-${Date.now()}`;
     const newProduct: Product = {
       ...productData,
@@ -847,59 +800,37 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       isPublished: productData.isPublished !== false,
       createdAt: new Date().toISOString(),
     };
-    setProducts((prev) => {
-      // Never overwrite an existing product accidentally when a slug is reused.
-      const id = prev.some(p => p.id === newProduct.id)
-        ? `prod-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
-        : newProduct.id;
-      const next = [{ ...newProduct, id }, ...prev];
-
-      // Persist immediately so the change is not lost before the next reload.
-      void saveProductCatalog(next);
-      try {
-        localStorage.setItem('digitalemdz_products', JSON.stringify(next));
-      } catch {}
-
-      return next;
-    });
-    showToast(`تمت إضافة منتج "${newProduct.name}" بنجاح!`, 'success');
+    void productsStore.commit(
+      (prev) => {
+        // Never overwrite an existing product accidentally when a slug is reused.
+        const id = prev.some((p) => p.id === newProduct.id)
+          ? `prod-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+          : newProduct.id;
+        return [{ ...newProduct, id }, ...prev];
+      },
+      { successMessage: `تمت إضافة منتج "${newProduct.name}" بنجاح!` },
+    );
   };
 
   const updateProduct = (updated: Product) => {
-    setProducts((prev) => {
-      const next = prev.map((p) => (p.id === updated.id ? updated : p));
-
-      // Persist immediately so edits survive page reloads.
-      void saveProductCatalog(next);
-      try {
-        localStorage.setItem('digitalemdz_products', JSON.stringify(next));
-      } catch {}
-
-      return next;
+    void productsStore.commit((prev) => prev.map((p) => (p.id === updated.id ? updated : p)), {
+      successMessage: `تم حفظ تعديلات "${updated.name}" بنجاح!`,
     });
-    showToast(`تم حفظ تعديلات "${updated.name}" بنجاح!`, 'success');
   };
 
   const deleteProduct = (productId: string) => {
-    setProducts((prev) => {
-      const next = prev.filter((p) => p.id !== productId);
-
-      // Persist deletion immediately in IndexedDB (primary storage).
-      void saveProductCatalog(next);
-      try {
-        localStorage.setItem('digitalemdz_products', JSON.stringify(next));
-      } catch {}
-
-      return next;
-    });
-    setCart(prev => prev.filter(item => item.product.id !== productId));
-    setSelectedProduct(prev => prev?.id === productId ? null : prev);
-    setCheckoutProduct(prev => prev?.id === productId ? null : prev);
-    showToast('تم حذف المنتج بنجاح', 'info');
+    void productsStore
+      .commit((prev) => prev.filter((p) => p.id !== productId), {
+        successMessage: 'تم حذف المنتج بنجاح',
+        successType: 'info',
+      });
+    void cartStore.commit((prev) => prev.filter((item) => item.product.id !== productId));
+    setSelectedProduct((prev) => (prev?.id === productId ? null : prev));
+    setCheckoutProduct((prev) => (prev?.id === productId ? null : prev));
   };
 
   const duplicateProduct = (productId: string) => {
-    const existing = products.find((p) => p.id === productId);
+    const existing = productsStore.getLatest().find((p) => p.id === productId);
     if (!existing) return;
     const duplicated: Product = {
       ...existing,
@@ -909,44 +840,39 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       createdAt: new Date().toISOString(),
       salesCount: 0,
     };
-    setProducts((prev) => [duplicated, ...prev]);
-    showToast(`تم نسخ المنتج بنجاح كـ "${duplicated.name}"`, 'success');
+    void productsStore.commit((prev) => [duplicated, ...prev], {
+      successMessage: `تم نسخ المنتج بنجاح كـ "${duplicated.name}"`,
+    });
   };
 
   const toggleProductPublish = (productId: string) => {
-    setProducts((prev) =>
-      prev.map((p) => {
-        if (p.id === productId) {
-          const isCurrentlyPublished = p.isPublished !== false;
-          const next = !isCurrentlyPublished;
-          showToast(
-            next
-              ? `تم نشر المنتج "${p.name}" للزوار`
-              : `تم إخفاء المنتج "${p.name}" عن الزوار`,
-            'info'
-          );
-          return { ...p, isPublished: next };
-        }
-        return p;
-      })
+    const target = productsStore.getLatest().find((p) => p.id === productId);
+    if (!target) return;
+    const next = !(target.isPublished !== false);
+    void productsStore.commit(
+      (prev) => prev.map((p) => (p.id === productId ? { ...p, isPublished: next } : p)),
+      {
+        successMessage: next
+          ? `تم نشر المنتج "${target.name}" للزوار`
+          : `تم إخفاء المنتج "${target.name}" عن الزوار`,
+        successType: 'info',
+      },
     );
   };
 
   const resetProductsToDefault = () => {
-    setProducts(INITIAL_PRODUCTS);
-    void saveProductCatalog(INITIAL_PRODUCTS);
-    try {
-      localStorage.setItem('digitalemdz_products', JSON.stringify(INITIAL_PRODUCTS));
-    } catch {
-      // IndexedDB remains the durable copy.
-    }
-    showToast('تمت استعادة كتالوج المنتجات الأصلي', 'info');
+    void productsStore.commit(INITIAL_PRODUCTS, {
+      successMessage: 'تمت استعادة كتالوج المنتجات الأصلي',
+      successType: 'info',
+    });
   };
 
-  // Store Settings
+  // ---------------------------------------------------------------------------
+  // Store settings
+  // ---------------------------------------------------------------------------
   const updateStoreSettings = (newSettings: Partial<StoreSettings>) => {
-    setStoreSettings((prev) => {
-      const updated: StoreSettings = {
+    void settingsStore.commit(
+      (prev) => ({
         ...INITIAL_STORE_SETTINGS,
         ...prev,
         ...newSettings,
@@ -968,39 +894,37 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         faqs: Array.isArray(newSettings.faqs) ? newSettings.faqs : (prev.faqs || INITIAL_STORE_SETTINGS.faqs),
         announcementText: (newSettings.announcementText !== undefined ? newSettings.announcementText : (prev.announcementText || INITIAL_STORE_SETTINGS.announcementText)),
         showAnnouncement: (newSettings.showAnnouncement !== undefined ? newSettings.showAnnouncement : prev.showAnnouncement),
-      };
-      try {
-        localStorage.setItem('digitalemdz_settings', JSON.stringify(updated));
-      } catch (e) {
-        console.error(e);
-      }
-      return updated;
-    });
-    showToast('تم حفظ إعدادات المتجر بنجاح!', 'success');
+      }),
+      { successMessage: 'تم حفظ إعدادات المتجر بنجاح!' },
+    );
   };
 
   const resetStoreSettingsToDefault = () => {
-    setStoreSettings(INITIAL_STORE_SETTINGS);
-    try {
-      localStorage.setItem('digitalemdz_settings', JSON.stringify(INITIAL_STORE_SETTINGS));
-    } catch (e) {
-      console.error(e);
-    }
-    showToast('تمت استعادة إعدادات المتجر الأصلية الافتراضية', 'info');
+    void settingsStore.commit(INITIAL_STORE_SETTINGS, {
+      successMessage: 'تمت استعادة إعدادات المتجر الأصلية الافتراضية',
+      successType: 'info',
+    });
   };
 
+  // ---------------------------------------------------------------------------
   // Coupons
+  // ---------------------------------------------------------------------------
   const addCoupon = (coupon: Coupon) => {
-    setCoupons((prev) => [...prev.filter((c) => c.code !== coupon.code), coupon]);
-    showToast(`تمت إضافة كود الخصم "${coupon.code}"`, 'success');
+    void couponsStore.commit((prev) => [...prev.filter((c) => c.code !== coupon.code), coupon], {
+      successMessage: `تمت إضافة كود الخصم "${coupon.code}"`,
+    });
   };
 
   const deleteCoupon = (code: string) => {
-    setCoupons((prev) => prev.filter((c) => c.code !== code));
-    showToast(`تم حذف كود الخصم "${code}"`, 'info');
+    void couponsStore.commit((prev) => prev.filter((c) => c.code !== code), {
+      successMessage: `تم حذف كود الخصم "${code}"`,
+      successType: 'info',
+    });
   };
 
+  // ---------------------------------------------------------------------------
   // Admin auth
+  // ---------------------------------------------------------------------------
   const loginAdmin = (passcode: string): boolean => {
     const clean = passcode.trim();
     if (clean === adminCredentials.passcode || clean === 'emdz2026' || clean === ADMIN_PASSCODE) {
@@ -1030,9 +954,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const cleanEmail = email.trim().toLowerCase();
     const cleanPass = password.trim();
 
-    // Use the credentials currently loaded into this page. This keeps the
-    // login check identical to what is shown in the login form and avoids a
-    // stale localStorage value from another browser tab overriding the form.
     const saved = {
       email: String(adminCredentials.email || '').trim(),
       passcode: String(adminCredentials.passcode || '').trim(),
@@ -1043,7 +964,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     if (isCorrectEmail && isCorrectPassword) {
       const user = { email: saved.email, name: 'إدارة Digital Emdz' };
-      setAdminCredentials(saved);
       setOwnerUser(user);
       setIsAdminAuthenticated(true);
       localStorage.setItem('digitalemdz_owner_user', JSON.stringify(user));
@@ -1088,6 +1008,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setProductToEdit(product);
     setIsProductEditorOpen(true);
   };
+
+  // Never render editors on top of not-yet-loaded data: an edit made before the
+  // saved data is loaded could otherwise be built on defaults.
+  if (!allReady) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff', color: '#111', fontFamily: 'sans-serif' }}>
+        جاري تحميل بيانات المتجر…
+      </div>
+    );
+  }
 
   return (
     <StoreContext.Provider
@@ -1186,7 +1116,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     </StoreContext.Provider>
   );
 };
-
 
 export const useStore = () => {
   const context = useContext(StoreContext);
