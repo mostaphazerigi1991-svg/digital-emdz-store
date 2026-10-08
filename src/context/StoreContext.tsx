@@ -7,7 +7,6 @@ import {
   INITIAL_DYNAMIC_PAYMENT_METHODS
 } from '../data/initialData';
 import { PERSIST_KEYS, requestPersistentStorage } from '../utils/persistence';
-import { usePersistentState } from '../utils/usePersistentState';
 import {
   CartItem,
   CategoryInfo,
@@ -22,6 +21,14 @@ import {
   ServiceRequest
 } from '../types';
 
+// ============================================================================
+// ⚠️ ملاحظة هامة جداً لمشاريع GitHub:
+// هذا الكود يحفظ البيانات في "localStorage" الخاص بمتصفحك فقط.
+// إذا قمت بتعديل منتج من لوحة التحكم، سيظهر التعديل لك أنت فقط ولن يراه الزوار.
+// لجعل التعديلات تظهر للجميع (Global Persistence)، يجب ربط المتجر بقاعدة بيانات 
+// حقيقية مثل Firebase أو Supabase، أو استخدام خدمة تخزين JSON سحابية مجانية.
+// ============================================================================
+
 interface ToastInfo {
   id: string;
   message: string;
@@ -30,6 +37,7 @@ interface ToastInfo {
 
 type AdminTab = 'products' | 'orders' | 'payments' | 'coupons' | 'settings';
 
+// ... (نفس تعريفات الـ Types والـ Interface الخاصة بك لم تتغير) ...
 interface StoreContextType {
   products: Product[];
   categories: CategoryInfo[];
@@ -140,6 +148,7 @@ const LEGACY_KEYS = {
 
 const readLegacyLocalStorage = <T,>(key: string, guard: (x: unknown) => x is T) => async (): Promise<T | null> => {
   try {
+    if (typeof window === 'undefined') return null;
     const raw = localStorage.getItem(key);
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
@@ -200,6 +209,88 @@ const DEFAULT_SERVICE_REQUESTS: ServiceRequest[] = [
 
 const DEFAULT_ADMIN_CREDENTIALS = { email: 'mostaphazerigi1991@gmail.com', passcode: 'mostapha1991' };
 
+// ============================================================================
+// دالة الحفظ المضمونة (بديلة لـ usePersistentState الخارجي لتجنب أخطاء GitHub)
+// ============================================================================
+interface PersistentOptions<T> {
+  defaults: T;
+  legacy?: () => Promise<T | null>;
+  normalize?: (x: unknown) => T;
+  notify?: (msg: string, type?: 'success' | 'error' | 'info') => void;
+  label: string;
+}
+
+function useGuaranteedPersistentState<T>(
+  key: string,
+  options: PersistentOptions<T>
+) {
+  const [value, setValue] = useState<T>(options.defaults);
+  const [ready, setReady] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState(Date.now());
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadData = async () => {
+      try {
+        // 1. محاولة قراءة البيانات القديمة أولاً (للترقية)
+        if (options.legacy && typeof window !== 'undefined') {
+          const legacyData = await options.legacy();
+          if (legacyData && isMounted) {
+            const normalized = options.normalize ? options.normalize(legacyData) : legacyData;
+            setValue(normalized);
+            localStorage.setItem(key, JSON.stringify(normalized));
+          }
+        }
+        
+        // 2. محاولة قراءة البيانات الحالية من localStorage
+        if (isMounted && typeof window !== 'undefined') {
+          const stored = localStorage.getItem(key);
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            const normalized = options.normalize ? options.normalize(parsed) : parsed;
+            setValue(normalized);
+          }
+        }
+      } catch (error) {
+        console.error(`خطأ في قراءة ${options.label}:`, error);
+      } finally {
+        if (isMounted) setReady(true);
+      }
+    };
+    loadData();
+    return () => { isMounted = false; };
+  }, [key, options]);
+
+  const commit = useCallback(async (
+    newValue: T | ((prev: T) => T),
+    commitOptions?: { successMessage?: string; successType?: 'success' | 'error' | 'info' }
+  ) => {
+    try {
+      const nextValue = typeof newValue === 'function' ? (newValue as (prev: T) => T)(value) : newValue;
+      setValue(nextValue);
+      const newTimestamp = Date.now();
+      setUpdatedAt(newTimestamp);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(key, JSON.stringify(nextValue));
+      }
+      
+      if (commitOptions?.successMessage && options.notify) {
+        options.notify(commitOptions.successMessage, commitOptions.successType || 'success');
+      }
+      return true;
+    } catch (error) {
+      console.error(`خطأ في حفظ ${options.label}:`, error);
+      if (options.notify) options.notify(`فشل حفظ ${options.label}، تأكد من إعدادات المتصفح`, 'error');
+      return false;
+    }
+  }, [key, value, options]);
+
+  const getLatest = useCallback(() => value, [value]);
+
+  return { value, ready, commit, updatedAt, getLatest };
+}
+// ============================================================================
+
 const PAYMENT_CLOUD_URL = 'https://jsoning.com/api/digitalemdz_store_payment_config_7f3c9a2d/payment_methods';
 
 interface CloudPayload {
@@ -258,56 +349,64 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }, type === 'error' ? 8000 : 3800);
   }, []);
 
-  const productsStore = usePersistentState<Product[]>(PERSIST_KEYS.products, {
+  // استخدام الدالة المضمونة بدلاً من usePersistentState الخارجي
+  const productsStore = useGuaranteedPersistentState<Product[]>(PERSIST_KEYS.products, {
     defaults: INITIAL_PRODUCTS,
     legacy: readLegacyLocalStorage<Product[]>(LEGACY_KEYS.products, isArray),
     normalize: (x) => (Array.isArray(x) ? (x as Product[]) : INITIAL_PRODUCTS),
     notify: showToast,
     label: 'المنتجات',
   });
-  const ordersStore = usePersistentState<Order[]>(PERSIST_KEYS.orders, {
+
+  const ordersStore = useGuaranteedPersistentState<Order[]>(PERSIST_KEYS.orders, {
     defaults: [],
     legacy: readLegacyLocalStorage<Order[]>(LEGACY_KEYS.orders, isArray),
     normalize: (x) => (Array.isArray(x) ? (x as Order[]) : []),
     notify: showToast,
     label: 'الطلبات',
   });
-  const settingsStore = usePersistentState<StoreSettings>(PERSIST_KEYS.settings, {
+
+  const settingsStore = useGuaranteedPersistentState<StoreSettings>(PERSIST_KEYS.settings, {
     defaults: INITIAL_STORE_SETTINGS,
     legacy: readLegacyLocalStorage<StoreSettings>(LEGACY_KEYS.settings, (x): x is StoreSettings => !!x && typeof x === 'object' && !Array.isArray(x)),
     normalize: normalizeSettings,
     notify: showToast,
     label: 'إعدادات المتجر',
   });
-  const couponsStore = usePersistentState<Coupon[]>(PERSIST_KEYS.coupons, {
+
+  const couponsStore = useGuaranteedPersistentState<Coupon[]>(PERSIST_KEYS.coupons, {
     defaults: INITIAL_COUPONS,
     legacy: readLegacyLocalStorage<Coupon[]>(LEGACY_KEYS.coupons, isArray),
     normalize: (x) => (Array.isArray(x) ? (x as Coupon[]) : INITIAL_COUPONS),
     notify: showToast,
     label: 'أكواد الخصم',
   });
-  const cartStore = usePersistentState<CartItem[]>(PERSIST_KEYS.cart, {
+
+  const cartStore = useGuaranteedPersistentState<CartItem[]>(PERSIST_KEYS.cart, {
     defaults: [],
     legacy: readLegacyLocalStorage<CartItem[]>(LEGACY_KEYS.cart, isArray),
     normalize: (x) => (Array.isArray(x) ? (x as CartItem[]) : []),
     notify: showToast,
     label: 'السلة',
   });
-  const paymentsStore = usePersistentState<DynamicPaymentMethod[]>(PERSIST_KEYS.paymentMethods, {
+
+  const paymentsStore = useGuaranteedPersistentState<DynamicPaymentMethod[]>(PERSIST_KEYS.paymentMethods, {
     defaults: INITIAL_DYNAMIC_PAYMENT_METHODS,
     legacy: readLegacyLocalStorage<DynamicPaymentMethod[]>(LEGACY_KEYS.paymentMethods, isNonEmptyArray),
     normalize: (x) => (Array.isArray(x) ? (x as DynamicPaymentMethod[]) : INITIAL_DYNAMIC_PAYMENT_METHODS),
     notify: showToast,
     label: 'طرق الدفع',
   });
-  const requestsStore = usePersistentState<ServiceRequest[]>(PERSIST_KEYS.serviceRequests, {
+
+  const requestsStore = useGuaranteedPersistentState<ServiceRequest[]>(PERSIST_KEYS.serviceRequests, {
     defaults: DEFAULT_SERVICE_REQUESTS,
     legacy: readLegacyLocalStorage<ServiceRequest[]>(LEGACY_KEYS.serviceRequests, isArray),
     normalize: (x) => (Array.isArray(x) ? (x as ServiceRequest[]) : DEFAULT_SERVICE_REQUESTS),
     notify: showToast,
     label: 'طلبات الخدمات',
   });
-  const credentialsStore = usePersistentState<{ email: string; passcode: string }>(PERSIST_KEYS.adminCredentials, {
+
+  const credentialsStore = useGuaranteedPersistentState<{ email: string; passcode: string }>(PERSIST_KEYS.adminCredentials, {
     defaults: DEFAULT_ADMIN_CREDENTIALS,
     legacy: readLegacyLocalStorage(LEGACY_KEYS.adminCredentials, isCredentials),
     normalize: (x) => (isCredentials(x) ? x : DEFAULT_ADMIN_CREDENTIALS),
@@ -329,7 +428,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     cartStore.ready && paymentsStore.ready && requestsStore.ready && credentialsStore.ready;
 
   useEffect(() => {
-    void requestPersistentStorage();
+    if (typeof window !== 'undefined') {
+      void requestPersistentStorage();
+    }
   }, []);
 
   const [paymentCloudReady, setPaymentCloudReady] = useState(false);
@@ -382,7 +483,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         showToast('تم حفظ طرق الدفع على هذا المتصفح، لكن تعذّرت مزامنتها مع باقي الأجهزة.', 'info');
       }
     });
-  }, [paymentsStore.updatedAt, paymentCloudReady]);
+  }, [paymentsStore.updatedAt, paymentCloudReady, showToast]);
 
   const [selectedCategory, setSelectedCategory] = useState<ProductCategory | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -394,6 +495,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [latestCompletedOrder, setLatestCompletedOrder] = useState<Order | null>(null);
 
   const [isAdminOpen, setIsAdminOpen] = useState(() => {
+    if (typeof window === 'undefined') return false;
     try {
       const params = new URLSearchParams(window.location.search);
       const bootstrapOwner = params.get(OWNER_BOOTSTRAP_PARAM) === '1';
@@ -419,6 +521,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     try {
       const params = new URLSearchParams(window.location.search);
       if (params.get(OWNER_BOOTSTRAP_PARAM) === '1') {
@@ -431,13 +534,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
     try {
       return localStorage.getItem('digitalemdz_admin_auth') === 'true' || localStorage.getItem(OWNER_BROWSER_KEY) === 'true';
     } catch {
       return false;
     }
   });
+
   const [ownerUser, setOwnerUser] = useState<{ email: string; name: string } | null>(() => {
+    if (typeof window === 'undefined') return null;
     try {
       const saved = localStorage.getItem('digitalemdz_owner_user');
       if (saved && (localStorage.getItem('digitalemdz_admin_auth') === 'true' || localStorage.getItem(OWNER_BROWSER_KEY) === 'true')) {
@@ -449,6 +555,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch {}
     return null;
   });
+
   const [isOwnerLoginModalOpen, setIsOwnerLoginModalOpen] = useState(false);
   const [productToEdit, setProductToEdit] = useState<Product | null>(null);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
@@ -517,10 +624,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }).then((ok) => {
       if (!ok) return;
       setOwnerUser(user);
-      try {
+      if (typeof window !== 'undefined') {
         localStorage.setItem('digitalemdz_owner_user', JSON.stringify(user));
         localStorage.setItem('digitalemdz_admin_auth', 'true');
-      } catch {}
+      }
     });
     return true;
   };
@@ -817,8 +924,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setIsAdminAuthenticated(true);
       const user = { email: adminCredentials.email, name: 'إدارة Digital Emdz' };
       setOwnerUser(user);
-      localStorage.setItem('digitalemdz_owner_user', JSON.stringify(user));
-      localStorage.setItem('digitalemdz_admin_auth', 'true');
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('digitalemdz_owner_user', JSON.stringify(user));
+        localStorage.setItem('digitalemdz_admin_auth', 'true');
+      }
       showToast('تم تسجيل الدخول وتفعيل لوحة الإدارة بنجاح!', 'success');
       return true;
     }
@@ -829,9 +938,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const logoutAdmin = () => {
     setIsAdminAuthenticated(false);
     setOwnerUser(null);
-    localStorage.setItem('digitalemdz_admin_auth', 'logged_out');
-    localStorage.removeItem('digitalemdz_owner_user');
-    localStorage.removeItem(OWNER_BROWSER_KEY);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('digitalemdz_admin_auth', 'logged_out');
+      localStorage.removeItem('digitalemdz_owner_user');
+      localStorage.removeItem(OWNER_BROWSER_KEY);
+    }
     showToast('تم تسجيل الخروج من لوحة التحكم', 'info');
   };
 
@@ -851,8 +962,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const user = { email: saved.email, name: 'إدارة Digital Emdz' };
       setOwnerUser(user);
       setIsAdminAuthenticated(true);
-      localStorage.setItem('digitalemdz_owner_user', JSON.stringify(user));
-      localStorage.setItem('digitalemdz_admin_auth', 'true');
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('digitalemdz_owner_user', JSON.stringify(user));
+        localStorage.setItem('digitalemdz_admin_auth', 'true');
+      }
       showToast('تم تسجيل الدخول وتفعيل لوحة تحكم الإدارة بنجاح!', 'success');
       setIsOwnerLoginModalOpen(false);
       return true;
@@ -870,9 +983,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const logoutOwner = () => {
     setOwnerUser(null);
     setIsAdminAuthenticated(false);
-    localStorage.removeItem('digitalemdz_owner_user');
-    localStorage.removeItem('digitalemdz_admin_auth');
-    localStorage.removeItem(OWNER_BROWSER_KEY);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('digitalemdz_owner_user');
+      localStorage.removeItem('digitalemdz_admin_auth');
+      localStorage.removeItem(OWNER_BROWSER_KEY);
+    }
     showToast('تم تسجيل خروج صاحب المتجر بنجاح', 'info');
   };
 
