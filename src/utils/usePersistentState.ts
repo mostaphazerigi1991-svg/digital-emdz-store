@@ -1,172 +1,93 @@
-/**
- * Persistent state hook with serialized IndexedDB commits.
- * The v2 IndexedDB record is authoritative after the first load.
- */
+import { useState, useEffect, useCallback, useRef } from 'react';
 
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { saveData, loadData, PERSIST_KEYS } from './persistence';
-
-type PersistenceKey = keyof typeof PERSIST_KEYS;
-
-interface PersistentStateOptions<T> {
+interface UsePersistentStateOptions<T> {
   defaults: T;
   legacy?: () => Promise<T | null>;
-  normalize?: (x: unknown) => T;
-  notify?: (message: string, type?: 'success' | 'error' | 'info') => void;
+  normalize?: (val: unknown) => T;
+  notify?: (msg: string, type?: 'success' | 'error' | 'info') => void;
   label?: string;
 }
 
-interface PersistentStateHandle<T> {
-  value: T;
-  ready: boolean;
-  updatedAt: number;
-  getLatest: () => T;
-  commit: (
-    update: T | ((prev: T) => T),
-    options?: { successMessage?: string; successType?: 'success' | 'info' }
-  ) => Promise<boolean>;
-}
-
-export function usePersistentState<T>(
-  key: PersistenceKey,
-  options: PersistentStateOptions<T>
-): PersistentStateHandle<T> {
-  const { defaults, normalize, notify, label } = options;
-
-  const [value, setValue] = useState<T>(defaults);
+export function usePersistentState<T>(key: string, options: UsePersistentStateOptions<T>) {
+  const [value, setValue] = useState<T>(options.defaults);
   const [ready, setReady] = useState(false);
-  const [updatedAt, setUpdatedAt] = useState(0);
-
-  const latestRef = useRef<T>(defaults);
-  const loadedRef = useRef(false);
-  const processingQueueRef = useRef(false);
-  const commitQueueRef = useRef<Array<{
-    update: T | ((prev: T) => T);
-    options?: { successMessage?: string; successType?: 'success' | 'info' };
-    resolve: (value: boolean) => void;
-  }>>([]);
-
-  const dataGuard = useCallback((x: unknown): x is T => {
-    return normalize ? true : x !== null && x !== undefined;
-  }, [normalize]);
+  const optionsRef = useRef(options);
 
   useEffect(() => {
-    if (loadedRef.current) return;
-    loadedRef.current = true;
+    optionsRef.current = options;
+  }, [options]);
 
-    void (async () => {
+  useEffect(() => {
+    let isMounted = true;
+    const loadData = async () => {
       try {
-        let loaded = await loadData(key, dataGuard, defaults);
-
-        if (normalize) {
-          loaded = normalize(loaded);
+        const stored = localStorage.getItem(key);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          const normalized = optionsRef.current.normalize ? optionsRef.current.normalize(parsed) : (parsed as T);
+          if (isMounted) setValue(normalized);
+        } else if (optionsRef.current.legacy) {
+          const legacyData = await optionsRef.current.legacy();
+          if (legacyData && isMounted) {
+            setValue(legacyData);
+            localStorage.setItem(key, JSON.stringify(legacyData));
+          }
         }
-
-        if (loaded === null || loaded === undefined) {
-          loaded = defaults;
-        }
-
-        latestRef.current = loaded;
-        setValue(loaded);
-        setUpdatedAt(Date.now());
       } catch (error) {
-        console.error(`${label || key}: Failed to load initial state:`, error);
-        latestRef.current = defaults;
-        setValue(defaults);
+        console.error(`Error loading state for key "${key}":`, error);
       } finally {
-        setReady(true);
+        if (isMounted) setReady(true);
       }
-    })();
-  }, [key, defaults, dataGuard, normalize, label]);
+    };
 
-  const processQueue = useCallback(async () => {
-    if (!ready || processingQueueRef.current) return;
+    loadData();
+    return () => {
+      isMounted = false;
+    };
+  }, [key]);
 
-    processingQueueRef.current = true;
-    try {
-      while (commitQueueRef.current.length > 0) {
-        const item = commitQueueRef.current.shift();
-        if (!item) continue;
+  const commit = useCallback(async (
+    newValueOrUpdater: T | ((prev: T) => T),
+    commitOptions?: { successMessage?: string; successType?: 'success' | 'error' | 'info' }
+  ): Promise<boolean> => {
+    return new Promise((resolve) => {
+      setValue((prev) => {
+        const nextValue = typeof newValueOrUpdater === 'function'
+          ? (newValueOrUpdater as (prev: T) => T)(prev)
+          : newValueOrUpdater;
 
         try {
-          let nextValue =
-            typeof item.update === 'function'
-              ? (item.update as (prev: T) => T)(latestRef.current)
-              : item.update;
-
-          if (normalize) {
-            nextValue = normalize(nextValue);
+          localStorage.setItem(key, JSON.stringify(nextValue));
+          
+          if (commitOptions?.successMessage && optionsRef.current.notify) {
+            optionsRef.current.notify(commitOptions.successMessage, commitOptions.successType || 'success');
           }
-
-          if (nextValue === null || nextValue === undefined) {
-            console.error(`${label || key}: Refused to save null/undefined`);
-            item.resolve(false);
-            continue;
-          }
-
-          const saved = await saveData(key, nextValue);
-          if (!saved) {
-            console.error(`${label || key}: IndexedDB save failed`);
-            if (notify) {
-              notify(`فشل حفظ ${label || key}. لم يتم اعتماد التغيير.`, 'error');
-            }
-            item.resolve(false);
-            continue;
-          }
-
-          // Update memory only after the durable write succeeds.
-          latestRef.current = nextValue;
-          setValue(nextValue);
-          setUpdatedAt(Date.now());
-
-          if (item.options?.successMessage && notify) {
-            notify(item.options.successMessage, item.options.successType || 'success');
-          }
-          item.resolve(true);
+          resolve(true);
         } catch (error) {
-          console.error(`${label || key}: Commit failed:`, error);
-          if (notify) {
-            notify(`فشل حفظ ${label || key}. لم يتم اعتماد التغيير.`, 'error');
+          console.error(`Error saving state for key "${key}":`, error);
+          if (optionsRef.current.notify) {
+            optionsRef.current.notify(`فشل الحفظ! الذاكرة ممتلئة بسبب حجم الصور الكبير، يرجى مسح بعض البيانات.`, 'error');
           }
-          item.resolve(false);
+          resolve(false);
         }
-      }
-    } finally {
-      processingQueueRef.current = false;
-    }
-  }, [key, normalize, ready, notify, label]);
-
-  useEffect(() => {
-    if (ready && commitQueueRef.current.length > 0) {
-      void processQueue();
-    }
-  }, [ready, processQueue]);
-
-  const commit = useCallback(
-    async (
-      update: T | ((prev: T) => T),
-      options?: { successMessage?: string; successType?: 'success' | 'info' }
-    ): Promise<boolean> => {
-      if (!ready) {
-        console.warn(`${label || key}: Commit requested before storage was ready`);
-        return false;
-      }
-
-      return await new Promise<boolean>((resolve) => {
-        commitQueueRef.current.push({ update, options, resolve });
-        void processQueue();
+        
+        return nextValue;
       });
-    },
-    [key, label, processQueue, ready]
-  );
+    });
+  }, [key]);
 
-  const getLatest = useCallback(() => latestRef.current, []);
+  const getLatest = useCallback((): T => {
+    try {
+      const stored = localStorage.getItem(key);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        return optionsRef.current.normalize ? optionsRef.current.normalize(parsed) : (parsed as T);
+      }
+    } catch (error) {
+      console.error(`Error in getLatest for key "${key}":`, error);
+    }
+    return value;
+  }, [key, value]);
 
-  return {
-    value,
-    ready,
-    updatedAt,
-    getLatest,
-    commit,
-  };
+  return { value, ready, commit, getLatest };
 }
