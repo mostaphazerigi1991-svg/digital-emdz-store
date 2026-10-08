@@ -216,21 +216,43 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     let cancelled = false;
 
     const loadCatalog = async () => {
-      const stored = await loadProductCatalog<Product>();
-      if (cancelled) return;
+      try {
+        const saved = localStorage.getItem('digitalemdz_products');
 
-      if (Array.isArray(stored)) {
-        setProducts(stored);
-        try {
-          localStorage.setItem('digitalemdz_products', JSON.stringify(stored));
-        } catch {
-          // IndexedDB is the durable source; localStorage is only a fallback.
+        if (saved) {
+          const parsed = JSON.parse(saved);
+
+          if (Array.isArray(parsed) && !cancelled) {
+            setProducts(parsed);
+            await saveProductCatalog<Product>(parsed);
+          }
+        } else {
+          const stored = await loadProductCatalog<Product>();
+
+          if (Array.isArray(stored) && !cancelled) {
+            setProducts(stored);
+            localStorage.setItem(
+              'digitalemdz_products',
+              JSON.stringify(stored)
+            );
+          } else if (!cancelled) {
+            setProducts(INITIAL_PRODUCTS);
+            await saveProductCatalog<Product>(INITIAL_PRODUCTS);
+            localStorage.setItem(
+              'digitalemdz_products',
+              JSON.stringify(INITIAL_PRODUCTS)
+            );
+          }
         }
-      } else {
-        await saveProductCatalog(products);
+      } catch {
+        if (!cancelled) {
+          setProducts(INITIAL_PRODUCTS);
+        }
       }
 
-      if (!cancelled) setProductCatalogReady(true);
+      if (!cancelled) {
+        setProductCatalogReady(true);
+      }
     };
 
     void loadCatalog();
