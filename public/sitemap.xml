@@ -1,33 +1,87 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://digitalemdz.com/</loc>
-    <lastmod>2026-10-06</lastmod>
+    <loc>https://digitalemdz.store/</loc>
+    <lastmod>2026-10-08</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://digitalemdz.com/#products-section</loc>
-    <lastmod>2026-10-06</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://digitalemdz.com/#offers-section</loc>
-    <lastmod>2026-10-06</lastmod>
+    <loc>https://digitalemdz.store/#products-section</loc>
+    <lastmod>2026-10-08</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://digitalemdz.com/#about-section</loc>
-    <lastmod>2026-10-06</lastmod>
+    <loc>https://digitalemdz.store/#offers-section</loc>
+    <lastmod>2026-10-08</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://digitalemdz.store/#about-section</loc>
+    <lastmod>2026-10-08</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://digitalemdz.store/#contact-section</loc>
+    <lastmod>2026-10-08</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://digitalemdz.com/#contact-section</loc>
-    <lastmod>2026-10-06</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
+    <loc>https://digitalemdz.store/?product=canva-pro-lifetime</loc>
+    <lastmod>2026-10-08</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://digitalemdz.store/?product=chatgpt-plus-month</loc>
+    <lastmod>2026-10-08</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://digitalemdz.store/?product=windows-11-pro-key</loc>
+    <lastmod>2026-10-08</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://digitalemdz.store/?product=office-365-lifetime</loc>
+    <lastmod>2026-10-08</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://digitalemdz.store/?product=ecommerce-social-canva-pack</loc>
+    <lastmod>2026-10-08</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://digitalemdz.store/?product=midjourney-shared-plan</loc>
+    <lastmod>2026-10-08</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://digitalemdz.store/?product=notion-ultimate-life-business-os</loc>
+    <lastmod>2026-10-08</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://digitalemdz.store/?product=digital-product-mastery-course</loc>
+    <lastmod>2026-10-08</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://digitalemdz.store/?product=international-accounts-consulting</loc>
+    <lastmod>2026-10-08</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
   </url>
 </urlset>
