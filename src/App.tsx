@@ -24,20 +24,85 @@ import { ServiceRequestModal } from './components/ServiceRequestModal';
 import { MobileBottomNav } from './components/MobileBottomNav';
 
 const MainStoreContent: React.FC = () => {
-  const { products, setSelectedCategory, setSelectedProduct } = useStore();
+  const { products, selectedProduct, setSelectedCategory, setSelectedProduct } = useStore();
 
   useEffect(() => {
     const productKey = new URLSearchParams(window.location.search).get('product');
-    if (!productKey) return;
-
-    const sharedProduct = products.find(
-      product => product.id === productKey || product.slug === productKey
-    );
+    const sharedProduct = productKey
+      ? products.find(product => product.id === productKey || product.slug === productKey)
+      : null;
 
     if (sharedProduct) {
       setSelectedProduct(sharedProduct);
     }
   }, [products, setSelectedProduct]);
+
+  // SEO for individual product URLs. This makes the existing modal-backed product
+  // URLs self-describing when Google renders the JavaScript page.
+  useEffect(() => {
+    const productKey = new URLSearchParams(window.location.search).get('product');
+    const product = selectedProduct || (productKey
+      ? products.find(p => p.id === productKey || p.slug === productKey)
+      : null);
+
+    const setMeta = (name: string, content: string) => {
+      let el = document.querySelector(`meta[name="${name}"]`) as HTMLMetaElement | null;
+      if (!el) {
+        el = document.createElement('meta');
+        el.name = name;
+        document.head.appendChild(el);
+      }
+      el.content = content;
+    };
+
+    let canonical = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
+    if (!canonical) {
+      canonical = document.createElement('link');
+      canonical.rel = 'canonical';
+      document.head.appendChild(canonical);
+    }
+
+    let schema = document.getElementById('digitalemdz-product-schema') as HTMLScriptElement | null;
+
+    if (product) {
+      const productUrl = `https://digitalemdz.store/?product=${encodeURIComponent(product.slug || product.id)}`;
+      document.title = `${product.name} | Digital Emdz`;
+      setMeta('description', product.shortDescription || product.fullDescription || `${product.name} - منتج رقمي متاح على Digital Emdz.`);
+      setMeta('robots', 'index, follow');
+      canonical.href = productUrl;
+
+      if (!schema) {
+        schema = document.createElement('script');
+        schema.id = 'digitalemdz-product-schema';
+        schema.type = 'application/ld+json';
+        document.head.appendChild(schema);
+      }
+
+      schema.textContent = JSON.stringify({
+        '@context': 'https://schema.org',
+        '@type': 'Product',
+        name: product.name,
+        description: product.fullDescription || product.shortDescription,
+        image: product.image ? [product.image] : undefined,
+        sku: product.id,
+        offers: {
+          '@type': 'Offer',
+          url: productUrl,
+          priceCurrency: 'DZD',
+          price: String(product.price),
+          availability: product.isPublished === false
+            ? 'https://schema.org/OutOfStock'
+            : 'https://schema.org/InStock'
+        }
+      });
+    } else {
+      document.title = 'Digital Emdz | متجر المنتجات والاشتراكات الرقمية';
+      setMeta('description', 'Digital Emdz متجر رقمي لبيع المنتجات الرقمية والاشتراكات والقوالب والخدمات الرقمية بسهولة وأمان.');
+      setMeta('robots', 'index, follow');
+      canonical.href = 'https://digitalemdz.store/';
+      if (schema) schema.remove();
+    }
+  }, [products, selectedProduct]);
 
   const handleNavigateSection = (sectionId: string) => {
     const el = document.getElementById(sectionId);
