@@ -7,6 +7,9 @@ export type ProductCategory =
   | 'services'
   | 'other';
 
+export type ProductBadge = 'الأكثر مبيعًا' | 'جديد' | 'عرض خاص' | 'تخفيض حصري' | '';
+export type ProductDeliveryMethod = string;
+
 export interface CategoryInfo {
   id: ProductCategory;
   name: string;
@@ -24,6 +27,11 @@ export type DeliveryType =
 
 export type ProductType = 'digital_product' | 'digital_subscription' | 'digital_service';
 
+export interface ProductFaq {
+  question: string;
+  answer: string;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -34,7 +42,7 @@ export interface Product {
   price: number;
   originalPrice?: number;
   discountPercent?: number;
-  badge?: 'الأكثر مبيعًا' | 'جديد' | 'عرض خاص' | 'تخفيض حصري' | '';
+  badge?: ProductBadge;
   image: string;
   additionalImages?: string[];
   productType?: ProductType;
@@ -47,10 +55,10 @@ export interface Product {
   isPublished?: boolean;
   features: string[];
   whatYouGet: string[];
-  deliveryMethod: string;
+  deliveryMethod: ProductDeliveryMethod;
   deliveryType: DeliveryType;
   deliveryPayload: string;
-  faqs: { question: string; answer: string }[];
+  faqs: ProductFaq[];
   stock?: number | 'unlimited';
   rating: number;
   salesCount: number;
