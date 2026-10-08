@@ -217,31 +217,25 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const loadCatalog = async () => {
       try {
-        const saved = localStorage.getItem('digitalemdz_products');
+        // IndexedDB is the primary catalog because product images can make
+        // localStorage exceed the browser quota. localStorage is only fallback.
+        const stored = await loadProductCatalog<Product>();
 
-        if (saved) {
-          const parsed = JSON.parse(saved);
+        if (Array.isArray(stored) && !cancelled) {
+          setProducts(stored);
+          try {
+            localStorage.setItem('digitalemdz_products', JSON.stringify(stored));
+          } catch {}
+        } else {
+          const saved = localStorage.getItem('digitalemdz_products');
+          const parsed = saved ? JSON.parse(saved) : null;
 
           if (Array.isArray(parsed) && !cancelled) {
             setProducts(parsed);
             await saveProductCatalog<Product>(parsed);
-          }
-        } else {
-          const stored = await loadProductCatalog<Product>();
-
-          if (Array.isArray(stored) && !cancelled) {
-            setProducts(stored);
-            localStorage.setItem(
-              'digitalemdz_products',
-              JSON.stringify(stored)
-            );
           } else if (!cancelled) {
             setProducts(INITIAL_PRODUCTS);
             await saveProductCatalog<Product>(INITIAL_PRODUCTS);
-            localStorage.setItem(
-              'digitalemdz_products',
-              JSON.stringify(INITIAL_PRODUCTS)
-            );
           }
         }
       } catch {
@@ -858,21 +852,44 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const id = prev.some(p => p.id === newProduct.id)
         ? `prod-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
         : newProduct.id;
-      return [{ ...newProduct, id }, ...prev];
+      const next = [{ ...newProduct, id }, ...prev];
+
+      // Persist immediately so the change is not lost before the next reload.
+      void saveProductCatalog(next);
+      try {
+        localStorage.setItem('digitalemdz_products', JSON.stringify(next));
+      } catch {}
+
+      return next;
     });
     showToast(`تمت إضافة منتج "${newProduct.name}" بنجاح!`, 'success');
   };
 
   const updateProduct = (updated: Product) => {
-    setProducts((prev) =>
-      prev.map((p) => (p.id === updated.id ? updated : p))
-    );
+    setProducts((prev) => {
+      const next = prev.map((p) => (p.id === updated.id ? updated : p));
+
+      // Persist immediately so edits survive page reloads.
+      void saveProductCatalog(next);
+      try {
+        localStorage.setItem('digitalemdz_products', JSON.stringify(next));
+      } catch {}
+
+      return next;
+    });
     showToast(`تم حفظ تعديلات "${updated.name}" بنجاح!`, 'success');
   };
 
   const deleteProduct = (productId: string) => {
     setProducts((prev) => {
       const next = prev.filter((p) => p.id !== productId);
+
+      // Persist deletion immediately in IndexedDB (primary storage).
+      void saveProductCatalog(next);
+      try {
+        localStorage.setItem('digitalemdz_products', JSON.stringify(next));
+      } catch {}
+
       return next;
     });
     setCart(prev => prev.filter(item => item.product.id !== productId));
