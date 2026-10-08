@@ -3,4 +3,4 @@ Allow: /
 Disallow: /admin
 Disallow: /owner
 
-Sitemap: https://digitalemdz.com/sitemap.xml
+Sitemap: https://digitalemdz.store/sitemap.xml
