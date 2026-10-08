@@ -1,184 +1,98 @@
-export type ProductCategory = 
-  | 'subscriptions'
-  | 'canva'
-  | 'ai-tools'
-  | 'templates'
-  | 'software'
-  | 'services'
-  | 'other';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
-export interface CategoryInfo {
-  id: ProductCategory;
-  name: string;
-  nameEn: string;
-  description: string;
-  iconName: string;
+interface UsePersistentStateOptions<T> {
+  defaults: T;
+  legacy?: () => Promise<T | null>;
+  normalize?: (val: unknown) => T;
+  notify?: (msg: string, type?: 'success' | 'error' | 'info') => void;
+  label?: string;
 }
 
-export type DeliveryType = 
-  | 'license_key' 
-  | 'download_link' 
-  | 'canva_link' 
-  | 'account_credentials' 
-  | 'custom_instructions';
+export function usePersistentState<T>(key: string, options: UsePersistentStateOptions<T>) {
+  const [value, setValue] = useState<T>(options.defaults);
+  const [ready, setReady] = useState(false);
+  const optionsRef = useRef(options);
 
-export type ProductType = 'digital_product' | 'digital_subscription' | 'digital_service';
+  // تحديث الخيارات دائماً لضمان عدم فقدان أي بيانات
+  useEffect(() => {
+    optionsRef.current = options;
+  }, [options]);
 
-export interface Product {
-  id: string;
-  name: string;
-  slug: string;
-  category: ProductCategory;
-  shortDescription: string;
-  fullDescription: string;
-  price: number;
-  originalPrice?: number;
-  discountPercent?: number;
-  badge?: 'الأكثر مبيعًا' | 'جديد' | 'عرض خاص' | 'تخفيض حصري' | '';
-  image: string;
-  additionalImages?: string[];
-  productType?: ProductType;
-  isSubscription: boolean;
-  subscriptionDuration?: string; // e.g. "شهر واحد", "سنة كاملة", "مدى الحياة"
-  subscriptionType?: string; // e.g. "حساب شخصي", "تفعيل على بريدك", "كود تفعيل"
-  isNew?: boolean;
-  isBestSeller?: boolean;
-  isSpecialOffer?: boolean;
-  isPublished?: boolean; // Controls whether product is visible to visitors (true by default)
-  features: string[];
-  whatYouGet: string[];
-  deliveryMethod: string;
-  deliveryType: DeliveryType;
-  deliveryPayload: string; // Protected: delivered after checkout!
-  faqs: { question: string; answer: string }[];
-  stock?: number | 'unlimited';
-  rating: number;
-  salesCount: number;
-  isFeatured?: boolean;
-  createdAt: string;
+  // تحميل البيانات عند فتح الموقع
+  useEffect(() => {
+    let isMounted = true;
+    const loadData = async () => {
+      try {
+        const stored = localStorage.getItem(key);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          const normalized = optionsRef.current.normalize ? optionsRef.current.normalize(parsed) : (parsed as T);
+          if (isMounted) setValue(normalized);
+        } else if (optionsRef.current.legacy) {
+          const legacyData = await optionsRef.current.legacy();
+          if (legacyData && isMounted) {
+            setValue(legacyData);
+            localStorage.setItem(key, JSON.stringify(legacyData));
+          }
+        }
+      } catch (error) {
+        console.error(`Error loading state for key "${key}":`, error);
+      } finally {
+        if (isMounted) setReady(true);
+      }
+    };
+
+    loadData();
+    return () => {
+      isMounted = false;
+    };
+  }, [key]);
+
+  // دالة الحفظ (Commit) المعدلة والقوية التي تضمن حفظ الإضافة والحذف
+  const commit = useCallback(async (
+    newValueOrUpdater: T | ((prev: T) => T),
+    commitOptions?: { successMessage?: string; successType?: 'success' | 'error' | 'info' }
+  ): Promise<boolean> => {
+    return new Promise((resolve) => {
+      setValue((prev) => {
+        // حساب القيمة الجديدة سواء كانت إضافة أو حذف
+        const nextValue = typeof newValueOrUpdater === 'function'
+          ? (newValueOrUpdater as (prev: T) => T)(prev)
+          : newValueOrUpdater;
+
+        try {
+          // الحفظ الإجباري في المتصفح
+          localStorage.setItem(key, JSON.stringify(nextValue));
+          
+          if (commitOptions?.successMessage && optionsRef.current.notify) {
+            optionsRef.current.notify(commitOptions.successMessage, commitOptions.successType || 'success');
+          }
+          resolve(true);
+        } catch (error) {
+          console.error(`Error saving state for key "${key}":`, error);
+          if (optionsRef.current.notify) {
+            optionsRef.current.notify(`فشل الحفظ! الذاكرة ممتلئة بسبب حجم الصور الكبير، يرجى مسح بعض البيانات.`, 'error');
+          }
+          resolve(false);
+        }
+        
+        return nextValue;
+      });
+    });
+  }, [key]);
+
+  const getLatest = useCallback((): T => {
+    try {
+      const stored = localStorage.getItem(key);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        return optionsRef.current.normalize ? optionsRef.current.normalize(parsed) : (parsed as T);
+      }
+    } catch (error) {
+      console.error(`Error in getLatest for key "${key}":`, error);
+    }
+    return value;
+  }, [key, value]);
+
+  return { value, ready, commit, getLatest };
 }
-
-export interface CartItem {
-  product: Product;
-  quantity: number;
-}
-
-export type OrderStatus = 'new' | 'pending_payment' | 'paid' | 'processing' | 'completed' | 'cancelled';
-export type PaymentStatus = 'pending' | 'paid' | 'under_review' | 'failed';
-
-export interface OrderItem {
-  productId: string;
-  productName: string;
-  price: number;
-  quantity: number;
-  deliveryType: DeliveryType;
-  deliveryPayload: string;
-  image: string;
-}
-
-export interface Order {
-  id: string;
-  customerName: string;
-  customerEmail: string;
-  customerPhone: string;
-  items: OrderItem[];
-  totalAmount: number;
-  subtotalAmount: number;
-  discountAmount: number;
-  appliedCoupon?: string;
-  paymentMethod: string; // Dynamic payment method name
-  paymentMethodId?: string;
-  paymentStatus?: PaymentStatus;
-  paymentDetailsNote?: string;
-  status: OrderStatus;
-  createdAt: string;
-}
-
-export interface ServiceRequest {
-  id: string;
-  customerName: string;
-  customerEmail: string;
-  customerPhone: string;
-  serviceTitle: string;
-  description: string;
-  budget?: string;
-  status: 'new' | 'in_progress' | 'completed' | 'cancelled';
-  createdAt: string;
-}
-
-export interface OwnerAccount {
-  email: string;
-  name: string;
-  role: 'owner';
-}
-
-export interface Coupon {
-  code: string;
-  discountPercent: number;
-  description: string;
-  isActive: boolean;
-}
-
-export interface DynamicPaymentMethod {
-  id: string;
-  name: string;
-  description?: string;
-  accountIdentifier: string; // RIP, ID, email, or wallet
-  instructions: string;
-  logo?: string;
-  enabled: boolean;
-  order: number;
-}
-
-export interface PaymentMethodsConfig {
-  baridimob: {
-    enabled: boolean;
-    rip: string;
-    accountHolder: string;
-    instructions: string;
-  };
-  edahabia_cib: {
-    enabled: boolean;
-    instructions: string;
-  };
-  paypal: {
-    enabled: boolean;
-    email: string;
-    instructions: string;
-  };
-  bank_transfer: {
-    enabled: boolean;
-    bankName: string;
-    rib: string;
-    instructions: string;
-  };
-}
-
-export interface StoreFaqItem {
-  id: string;
-  question: string;
-  answer: string;
-}
-
-export interface StoreSettings {
-  storeName: string;
-  tagline: string;
-  logo?: string;
-  heroTitle: string;
-  heroSubtitle: string;
-  heroBadge?: string;
-  heroCta1Text: string;
-  heroCta2Text: string;
-  whatsappNumber: string;
-  whatsappMessage: string;
-  supportEmail: string;
-  phone?: string;
-  address?: string;
-  currency: string;
-  announcementText: string;
-  showAnnouncement: boolean;
-  aboutText?: string;
-  faqs?: StoreFaqItem[];
-  paymentMethods: PaymentMethodsConfig;
-}
-
