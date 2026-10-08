@@ -261,6 +261,13 @@ export async function loadData<T>(
       return stored;
     }
 
+    // Products must never be resurrected from stale legacy storage.
+    // The v2 IndexedDB record is authoritative; if it is absent, use defaults
+    // instead of restoring an old deleted catalog.
+    if (key === 'products') {
+      return defaults;
+    }
+
     const migrated = await migrateOldData(key, guard);
     if (migrated !== null && guard(migrated)) {
       return migrated;
