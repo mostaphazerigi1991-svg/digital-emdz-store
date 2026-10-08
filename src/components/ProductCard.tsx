@@ -48,6 +48,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
 
   const isPublicView = new URLSearchParams(window.location.search).get('public') === '1';
   const canShowOwner = Boolean(ownerUser || isAdminAuthenticated) && !isPublicView;
+  // A real href makes each product discoverable by Googlebot; the click still opens
+  // the existing product detail modal for visitors.
+  const productUrl = `?product=${encodeURIComponent(product.slug || product.id)}`;
 
   const getBadgeStyle = (badge?: string) => {
     switch (badge) {
@@ -128,11 +131,19 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
           </div>
 
           {/* Product Title */}
-          <h3 
-            onClick={() => setSelectedProduct(product)}
-            className="text-base font-bold text-white group-hover:text-indigo-300 transition-colors line-clamp-2 cursor-pointer leading-snug mb-2"
-          >
-            {product.name}
+          <h3 className="text-base font-bold text-white group-hover:text-indigo-300 transition-colors line-clamp-2 leading-snug mb-2">
+            <a
+              href={productUrl}
+              onClick={(e) => {
+                e.preventDefault();
+                window.history.pushState({}, '', productUrl);
+                setSelectedProduct(product);
+              }}
+              className="hover:text-indigo-300 transition-colors"
+              aria-label={`عرض ${product.name}`}
+            >
+              {product.name}
+            </a>
           </h3>
 
           {/* Short Description */}
