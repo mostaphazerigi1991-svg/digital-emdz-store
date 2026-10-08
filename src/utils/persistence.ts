@@ -1,7 +1,7 @@
 /**
- * Central persistence layer for all store data
- * Handles localStorage, IndexedDB, and provides atomic operations
- * with proper error handling and race condition prevention
+ * Central persistence layer for all store data.
+ * IndexedDB is the single source of truth; legacy storage is used only
+ * during a one-time migration when no v2 record exists.
  */
 
 const DB_NAME = 'DigitalEmdzStore';
@@ -9,7 +9,6 @@ const DB_VERSION = 2;
 const STORE_NAME = 'data';
 const LEGACY_DB_NAME = 'DigitalEmdzCatalog';
 
-// Persistence keys - single source of truth
 export const PERSIST_KEYS = {
   products: 'digitalemdz_products_v2',
   orders: 'digitalemdz_orders_v2',
@@ -33,9 +32,6 @@ interface StoredData {
 let dbInstance: IDBDatabase | null = null;
 const dbInitPromise: Promise<IDBDatabase> = initializeDB();
 
-/**
- * Initialize IndexedDB with migration support
- */
 async function initializeDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     if (typeof window === 'undefined' || !window.indexedDB) {
@@ -46,68 +42,86 @@ async function initializeDB(): Promise<IDBDatabase> {
     const request = window.indexedDB.open(DB_NAME, DB_VERSION);
 
     request.onerror = () => reject(request.error);
-    request.onblocked = () => console.warn('DB operation blocked');
+    request.onblocked = () => console.warn('DigitalEmdz persistence database is blocked');
 
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
 
-      // Remove old object store if it exists
-      if (db.objectStoreNames.contains(STORE_NAME)) {
-        db.deleteObjectStore(STORE_NAME);
+      // Never delete an existing store during an upgrade: doing so can erase
+      // the owner's saved catalog/settings. Create it only when it is missing.
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        const store = db.createObjectStore(STORE_NAME, { keyPath: 'key' });
+        store.createIndex('timestamp', 'timestamp', { unique: false });
       }
-
-      // Create new object store with timestamp index
-      const store = db.createObjectStore(STORE_NAME, { keyPath: 'key' });
-      store.createIndex('timestamp', 'timestamp', { unique: false });
     };
 
     request.onsuccess = () => {
       dbInstance = request.result;
-      resolve(request.result);
+      dbInstance.onversionchange = () => dbInstance?.close();
+      resolve(dbInstance);
     };
   });
 }
 
-/**
- * Migrate legacy data from old storage systems
- */
-async function migrateOldData<T>(key: PersistenceKey, guard: (x: unknown) => x is T): Promise<T | null> {
+async function saveDataInternal<T>(key: PersistenceKey, value: T): Promise<boolean> {
   try {
-    // Try legacy localStorage first
-    const legacyKey = `digitalemdz_${key.replace('_v2', '')}`;
-    const stored = localStorage.getItem(legacyKey);
-    if (stored) {
-      try {
-        const parsed: unknown = JSON.parse(stored);
-        if (guard(parsed)) {
-          // Migrate to new system
-          await saveDataInternal(key, parsed);
-          // Keep old data for now, will be cleaned up
-          return parsed;
-        }
-      } catch (e) {
-        console.warn(`Failed to parse legacy ${legacyKey}:`, e);
-      }
-    }
+    const db = await dbInitPromise;
+    const data: StoredData = {
+      key,
+      value,
+      timestamp: Date.now(),
+      version: 1,
+    };
 
-    // Try legacy IndexedDB (products only)
-    if (key === 'products') {
-      const legacyData = await loadLegacyProductCatalog();
-      if (legacyData) {
-        await saveDataInternal(key, legacyData);
-        return legacyData as unknown as T;
-      }
-    }
-  } catch (e) {
-    console.warn(`Migration failed for ${key}:`, e);
+    return await new Promise<boolean>((resolve) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const request = tx.objectStore(STORE_NAME).put(data);
+
+      request.onerror = () => {
+        console.error(`Failed to save ${key} to IndexedDB:`, request.error);
+      };
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => {
+        console.error(`Transaction failed for ${key}:`, tx.error);
+        resolve(false);
+      };
+      tx.onabort = () => resolve(false);
+    });
+  } catch (error) {
+    console.error(`Error saving ${key}:`, error);
+    return false;
   }
-
-  return null;
 }
 
-/**
- * Load product catalog from legacy IndexedDB
- */
+async function loadDataInternal<T>(key: PersistenceKey): Promise<T | null> {
+  try {
+    const db = await dbInitPromise;
+
+    return await new Promise<T | null>((resolve) => {
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const request = tx.objectStore(STORE_NAME).get(key);
+
+      request.onsuccess = () => {
+        const record = request.result as StoredData | undefined;
+        // Important: [] is valid persisted data and must never be treated as missing.
+        resolve(record ? (record.value as T) : null);
+      };
+      request.onerror = () => resolve(null);
+    });
+  } catch (error) {
+    console.warn(`Error loading ${key}:`, error);
+    return null;
+  }
+}
+
+async function removeLegacyLocalStorage(key: string): Promise<void> {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Ignore cleanup failures; the v2 record remains authoritative.
+  }
+}
+
 function loadLegacyProductCatalog(): Promise<unknown> {
   return new Promise((resolve) => {
     if (typeof window === 'undefined' || !window.indexedDB) {
@@ -120,155 +134,147 @@ function loadLegacyProductCatalog(): Promise<unknown> {
     request.onsuccess = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains('catalog')) {
+        db.close();
         resolve(null);
         return;
       }
 
       const tx = db.transaction('catalog', 'readonly');
-      const store = tx.objectStore('catalog');
-      const getRequest = store.get('products');
+      const getRequest = tx.objectStore('catalog').get('products');
 
       getRequest.onsuccess = () => {
-        const record = getRequest.result as { products?: unknown };
-        resolve(record?.products || null);
+        const record = getRequest.result as { products?: unknown } | undefined;
+        resolve(record && 'products' in record ? record.products : null);
       };
       getRequest.onerror = () => resolve(null);
+      tx.oncomplete = () => db.close();
     };
   });
 }
 
-/**
- * Core internal save function - atomic operation
- */
-async function saveDataInternal<T>(key: PersistenceKey, value: T): Promise<boolean> {
+async function removeLegacyProductCatalog(): Promise<void> {
   try {
-    const db = await dbInitPromise;
-    const timestamp = Date.now();
-    const data: StoredData = {
-      key,
-      value,
-      timestamp,
-      version: 1,
-    };
+    if (typeof window === 'undefined' || !window.indexedDB) return;
 
-    return new Promise((resolve) => {
-      const tx = db.transaction(STORE_NAME, 'readwrite');
-      const store = tx.objectStore(STORE_NAME);
-      const request = store.put(data);
-
-      request.onerror = () => {
-        console.error(`Failed to save ${key} to IndexedDB:`, request.error);
-        resolve(false);
-      };
-
-      tx.oncomplete = () => resolve(true);
-      tx.onerror = () => {
-        console.error(`Transaction failed for ${key}:`, tx.error);
-        resolve(false);
-      };
-    });
-  } catch (e) {
-    console.error(`Error saving ${key}:`, e);
-    return false;
-  }
-}
-
-/**
- * Core internal load function
- */
-async function loadDataInternal<T>(key: PersistenceKey): Promise<T | null> {
-  try {
-    const db = await dbInitPromise;
-
-    return new Promise((resolve) => {
-      const tx = db.transaction(STORE_NAME, 'readonly');
-      const store = tx.objectStore(STORE_NAME);
-      const request = store.get(key);
-
+    const request = window.indexedDB.open(LEGACY_DB_NAME, 1);
+    await new Promise<void>((resolve) => {
+      request.onerror = () => resolve();
       request.onsuccess = () => {
-        const record = request.result as StoredData | undefined;
-        resolve((record?.value as T) || null);
-      };
+        const db = request.result;
+        if (!db.objectStoreNames.contains('catalog')) {
+          db.close();
+          resolve();
+          return;
+        }
 
-      request.onerror = () => {
-        console.warn(`Failed to load ${key} from IndexedDB`);
-        resolve(null);
+        const tx = db.transaction('catalog', 'readwrite');
+        tx.objectStore('catalog').delete('products');
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        tx.onerror = () => {
+          db.close();
+          resolve();
+        };
       };
     });
-  } catch (e) {
-    console.warn(`Error loading ${key}:`, e);
-    return null;
+  } catch {
+    // Cleanup is best-effort only.
   }
 }
 
-/**
- * Save data with validation and fallback
- */
-export async function saveData<T>(key: PersistenceKey, value: T): Promise<boolean> {
-  if (!value) {
-    console.warn(`Attempted to save null/undefined value for ${key}`);
-    return false;
-  }
-
+async function migrateOldData<T>(
+  key: PersistenceKey,
+  guard: (x: unknown) => x is T
+): Promise<T | null> {
   try {
-    // Try to estimate size (rough check for large payloads)
-    const serialized = JSON.stringify(value);
-    const sizeInMB = new Blob([serialized]).size / (1024 * 1024);
+    const legacyKey = `digitalemdz_${key.replace('_v2', '')}`;
 
-    if (sizeInMB > 5) {
-      console.warn(`Data for ${key} exceeds 5MB (${sizeInMB.toFixed(2)}MB) - may fail to store`);
+    try {
+      const stored = localStorage.getItem(legacyKey);
+      if (stored !== null) {
+        const parsed: unknown = JSON.parse(stored);
+        if (guard(parsed)) {
+          const saved = await saveDataInternal(key, parsed);
+          if (saved) {
+            await removeLegacyLocalStorage(legacyKey);
+            return parsed;
+          }
+        }
+      }
+    } catch (error) {
+      console.warn(`Failed to migrate legacy ${legacyKey}:`, error);
     }
 
-    // Primary storage: IndexedDB
+    if (key === 'products') {
+      const legacyData = await loadLegacyProductCatalog();
+      if (legacyData !== null && guard(legacyData)) {
+        const saved = await saveDataInternal(key, legacyData);
+        if (saved) {
+          await removeLegacyProductCatalog();
+          return legacyData;
+        }
+      }
+    }
+  } catch (error) {
+    console.warn(`Migration failed for ${key}:`, error);
+  }
+
+  return null;
+}
+
+export async function saveData<T>(key: PersistenceKey, value: T): Promise<boolean> {
+  if (value === null || value === undefined) {
+    console.warn(`Attempted to save null/undefined for ${key}`);
+    return false;
+  }
+
+  try {
+    const serialized = JSON.stringify(value);
+    const sizeInMB = new Blob([serialized]).size / (1024 * 1024);
+    if (sizeInMB > 5) {
+      console.warn(`Data for ${key} is ${sizeInMB.toFixed(2)}MB; IndexedDB may reject it.`);
+    }
+
     const success = await saveDataInternal(key, value);
     if (!success) {
       console.error(`Primary storage failed for ${key}`);
-      return false;
     }
-
-    return true;
-  } catch (e) {
-    console.error(`Error in saveData for ${key}:`, e);
+    return success;
+  } catch (error) {
+    console.error(`Error in saveData for ${key}:`, error);
     return false;
   }
 }
 
-/**
- * Load data with fallback chain: IndexedDB → Legacy migrations → null
- */
 export async function loadData<T>(
   key: PersistenceKey,
   guard: (x: unknown) => x is T,
   defaults: T
 ): Promise<T> {
   try {
-    // First, try to load from new system
     const stored = await loadDataInternal<T>(key);
-    if (stored && guard(stored)) {
+
+    // A v2 record always wins, including an intentionally empty array [].
+    if (stored !== null && guard(stored)) {
       return stored;
     }
 
-    // Second, try to migrate from old systems
     const migrated = await migrateOldData(key, guard);
-    if (migrated) {
+    if (migrated !== null && guard(migrated)) {
       return migrated;
     }
 
-    // Finally, return defaults (never use INITIAL_DATA directly in context)
     return defaults;
-  } catch (e) {
-    console.error(`Error loading ${key}, falling back to defaults:`, e);
+  } catch (error) {
+    console.error(`Error loading ${key}, falling back to defaults:`, error);
     return defaults;
   }
 }
 
-/**
- * Request persistent storage from browser
- */
 export async function requestPersistentStorage(): Promise<boolean> {
-  if (typeof navigator === 'undefined' || !navigator.storage) {
-    return false;
-  }
+  if (typeof navigator === 'undefined' || !navigator.storage) return false;
 
   try {
     const persistent = await navigator.storage.persisted();
@@ -276,42 +282,34 @@ export async function requestPersistentStorage(): Promise<boolean> {
       return await navigator.storage.persist();
     }
     return persistent;
-  } catch (e) {
-    console.warn('Persistent storage request failed:', e);
+  } catch (error) {
+    console.warn('Persistent storage request failed:', error);
     return false;
   }
 }
 
-/**
- * Clear all stored data (admin reset)
- */
 export async function clearAllData(): Promise<boolean> {
   try {
     const db = await dbInitPromise;
-    return new Promise((resolve) => {
+    return await new Promise<boolean>((resolve) => {
       const tx = db.transaction(STORE_NAME, 'readwrite');
-      const store = tx.objectStore(STORE_NAME);
-      const request = store.clear();
-
+      const request = tx.objectStore(STORE_NAME).clear();
       request.onerror = () => resolve(false);
       tx.oncomplete = () => resolve(true);
+      tx.onabort = () => resolve(false);
     });
-  } catch (e) {
-    console.error('Error clearing data:', e);
+  } catch (error) {
+    console.error('Error clearing data:', error);
     return false;
   }
 }
 
-/**
- * Get all stored data (for debugging/export)
- */
 export async function getAllData(): Promise<Record<string, unknown>> {
   try {
     const db = await dbInitPromise;
-    return new Promise((resolve) => {
+    return await new Promise<Record<string, unknown>>((resolve) => {
       const tx = db.transaction(STORE_NAME, 'readonly');
-      const store = tx.objectStore(STORE_NAME);
-      const request = store.getAll();
+      const request = tx.objectStore(STORE_NAME).getAll();
 
       request.onsuccess = () => {
         const records = (request.result as StoredData[]) || [];
@@ -321,11 +319,10 @@ export async function getAllData(): Promise<Record<string, unknown>> {
         });
         resolve(data);
       };
-
       request.onerror = () => resolve({});
     });
-  } catch (e) {
-    console.error('Error getting all data:', e);
+  } catch (error) {
+    console.error('Error getting all data:', error);
     return {};
   }
 }
