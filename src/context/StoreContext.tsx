@@ -6,7 +6,6 @@ import {
   INITIAL_STORE_SETTINGS,
   INITIAL_DYNAMIC_PAYMENT_METHODS
 } from '../data/initialData';
-import { loadProductCatalog } from '../utils/productStorage';
 import { PERSIST_KEYS, requestPersistentStorage } from '../utils/persistence';
 import { usePersistentState } from '../utils/usePersistentState';
 import {
@@ -38,8 +37,6 @@ interface StoreContextType {
   setSelectedCategory: (cat: ProductCategory | 'all') => void;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
-
-  // Cart
   cart: CartItem[];
   addToCart: (product: Product, quantity?: number, openCart?: boolean) => void;
   removeFromCart: (productId: string) => void;
@@ -54,8 +51,6 @@ interface StoreContextType {
   cartDiscount: number;
   isCartOpen: boolean;
   setIsCartOpen: (open: boolean) => void;
-
-  // Modals & Navigation
   selectedProduct: Product | null;
   setSelectedProduct: (p: Product | null) => void;
   isCheckoutOpen: boolean;
@@ -63,16 +58,12 @@ interface StoreContextType {
   checkoutProduct: Product | null;
   setCheckoutProduct: (p: Product | null) => void;
   startDirectCheckout: (product: Product) => void;
-
-  // Orders
   orders: Order[];
   createOrder: (orderData: Omit<Order, 'id' | 'createdAt'>) => Order;
   updateOrderStatus: (orderId: string, status: OrderStatus, paymentStatus?: PaymentStatus) => void;
   deleteOrder: (orderId: string) => void;
   latestCompletedOrder: Order | null;
   setLatestCompletedOrder: (order: Order | null) => void;
-
-  // Dynamic Payment Methods
   paymentMethods: DynamicPaymentMethod[];
   addPaymentMethod: (method: Omit<DynamicPaymentMethod, 'id' | 'order'>) => void;
   updatePaymentMethod: (method: DynamicPaymentMethod) => void;
@@ -80,8 +71,6 @@ interface StoreContextType {
   togglePaymentMethod: (id: string) => void;
   movePaymentMethod: (id: string, direction: 'up' | 'down') => void;
   resetPaymentMethodsToDefault: () => void;
-
-  // Settings & CRUD
   storeSettings: StoreSettings;
   updateStoreSettings: (settings: Partial<StoreSettings>) => void;
   resetStoreSettingsToDefault: () => void;
@@ -91,13 +80,9 @@ interface StoreContextType {
   duplicateProduct: (productId: string) => void;
   toggleProductPublish: (productId: string) => void;
   resetProductsToDefault: () => void;
-
-  // Coupons
   coupons: Coupon[];
   addCoupon: (coupon: Coupon) => void;
   deleteCoupon: (code: string) => void;
-
-  // Admin & Owner
   isAdminOpen: boolean;
   setIsAdminOpen: (open: boolean) => void;
   adminActiveTab: AdminTab;
@@ -106,8 +91,6 @@ interface StoreContextType {
   isAdminAuthenticated: boolean;
   loginAdmin: (passcode: string) => boolean;
   logoutAdmin: () => void;
-
-  // Dedicated Owner System
   ownerUser: { email: string; name: string } | null;
   loginOwner: (email: string, password: string) => boolean;
   logoutOwner: () => void;
@@ -121,8 +104,6 @@ interface StoreContextType {
   setIsProductEditorOpen: (open: boolean) => void;
   openProductEditorForAdd: () => void;
   openProductEditorForEdit: (product: Product) => void;
-
-  // Service Requests
   serviceRequests: ServiceRequest[];
   createServiceRequest: (data: Omit<ServiceRequest, 'id' | 'createdAt' | 'status'>) => ServiceRequest;
   updateServiceRequestStatus: (id: string, status: ServiceRequest['status']) => void;
@@ -130,37 +111,22 @@ interface StoreContextType {
   isServiceRequestModalOpen: boolean;
   setIsServiceRequestModalOpen: (open: boolean) => void;
   openServiceRequestModal: () => void;
-
-  // Admin Credentials (Email & Password/Passcode)
   adminCredentials: { email: string; passcode: string };
   updateAdminCredentials: (newEmail: string, newPasscode: string) => boolean;
-
-  // Search Modal
   isSearchModalOpen: boolean;
   setIsSearchModalOpen: (open: boolean) => void;
-
-  // Policies Modal
   activePolicy: 'privacy' | 'terms' | 'refund' | 'faq' | null;
   setActivePolicy: (policy: 'privacy' | 'terms' | 'refund' | 'faq' | null) => void;
-
-  // Toast
   toasts: ToastInfo[];
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
-const ADMIN_PASSCODE = 'admin123'; // Default secure passcode for store manager
-
-// Owner-browser bootstrap: open the site once with ?owner=1 to mark this browser as the owner's browser.
-// After that, the admin dashboard opens automatically on this browser. The marker is local to this site's origin.
+const ADMIN_PASSCODE = 'admin123';
 const OWNER_BROWSER_KEY = 'digitalemdz_owner_browser';
 const OWNER_BOOTSTRAP_PARAM = 'owner';
 
-// ---------------------------------------------------------------------------
-// Legacy localStorage keys (read ONCE for migration, never used afterwards).
-// Once a value exists in the central store, these can never override it.
-// ---------------------------------------------------------------------------
 const LEGACY_KEYS = {
   products: 'digitalemdz_products',
   orders: 'digitalemdz_orders',
@@ -190,27 +156,12 @@ const isCredentials = (x: unknown): x is { email: string; passcode: string } =>
   typeof (x as { email?: unknown }).email === 'string' &&
   typeof (x as { passcode?: unknown }).passcode === 'string';
 
-const legacyProducts = async (): Promise<Product[] | null> => {
-  try {
-    // The old IndexedDB catalog was the primary store of the previous version.
-    const stored = await loadProductCatalog<Product>();
-    if (Array.isArray(stored)) return stored;
-  } catch {
-    // fall through to localStorage
-  }
-  return readLegacyLocalStorage<Product[]>(LEGACY_KEYS.products, isArray)();
-};
-
 const REQUIRED_TEXT_SETTINGS = [
   'storeName', 'currency', 'heroTitle', 'heroSubtitle', 'heroCta1Text',
   'heroCta2Text', 'whatsappNumber', 'whatsappMessage', 'supportEmail',
 ] as const;
 const PREVIOUS_WRONG_WHATSAPP = '+2137709139434';
 
-/**
- * Fills fields that are MISSING (e.g. settings added in a newer app version) from the defaults.
- * It never replaces a value the admin saved, except blank required fields and the known-wrong WhatsApp number.
- */
 const normalizeSettings = (stored: unknown): StoreSettings => {
   const p = (stored && typeof stored === 'object' ? stored : {}) as Partial<StoreSettings>;
   const merged: StoreSettings = {
@@ -249,10 +200,6 @@ const DEFAULT_SERVICE_REQUESTS: ServiceRequest[] = [
 
 const DEFAULT_ADMIN_CREDENTIALS = { email: 'mostaphazerigi1991@gmail.com', passcode: 'mostapha1991' };
 
-// ---------------------------------------------------------------------------
-// Cross-device payment configuration (best-effort mirror of the local save).
-// The LOCAL (verified) save is the source of truth for the success message.
-// ---------------------------------------------------------------------------
 const PAYMENT_CLOUD_URL = 'https://jsoning.com/api/digitalemdz_store_payment_config_7f3c9a2d/payment_methods';
 
 interface CloudPayload {
@@ -269,7 +216,6 @@ const readCloudPaymentMethods = async (): Promise<CloudPayload | null> => {
     });
     if (!response.ok) return null;
     const data: unknown = await response.json();
-    // Legacy format: a bare array without a version.
     if (Array.isArray(data)) return { updatedAt: 0, methods: data as DynamicPaymentMethod[] };
     if (data && typeof data === 'object' && Array.isArray((data as CloudPayload).methods)) {
       return { updatedAt: Number((data as CloudPayload).updatedAt) || 0, methods: (data as CloudPayload).methods };
@@ -303,7 +249,6 @@ const writeCloudPaymentMethods = async (payload: CloudPayload): Promise<boolean>
 };
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // ---- Toasts (declared first: the persistence layer reports through them) ----
   const [toasts, setToasts] = useState<ToastInfo[]>([]);
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'success') => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -313,16 +258,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }, type === 'error' ? 8000 : 3800);
   }, []);
 
-  // =========================================================================
-  // CENTRAL PERSISTENCE
-  // Every admin-editable dataset is one usePersistentState(...) below.
-  // To make a NEW setting persistent: add a key in utils/persistence.ts
-  // (PERSIST_KEYS), add one usePersistentState here, and mutate it only via
-  // its `commit(...)`. Nothing else is required.
-  // =========================================================================
   const productsStore = usePersistentState<Product[]>(PERSIST_KEYS.products, {
     defaults: INITIAL_PRODUCTS,
-    legacy: legacyProducts,
+    legacy: readLegacyLocalStorage<Product[]>(LEGACY_KEYS.products, isArray),
     normalize: (x) => (Array.isArray(x) ? (x as Product[]) : INITIAL_PRODUCTS),
     notify: showToast,
     label: 'المنتجات',
@@ -336,10 +274,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   });
   const settingsStore = usePersistentState<StoreSettings>(PERSIST_KEYS.settings, {
     defaults: INITIAL_STORE_SETTINGS,
-    legacy: readLegacyLocalStorage<StoreSettings>(
-      LEGACY_KEYS.settings,
-      (x): x is StoreSettings => !!x && typeof x === 'object' && !Array.isArray(x),
-    ),
+    legacy: readLegacyLocalStorage<StoreSettings>(LEGACY_KEYS.settings, (x): x is StoreSettings => !!x && typeof x === 'object' && !Array.isArray(x)),
     normalize: normalizeSettings,
     notify: showToast,
     label: 'إعدادات المتجر',
@@ -361,7 +296,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const paymentsStore = usePersistentState<DynamicPaymentMethod[]>(PERSIST_KEYS.paymentMethods, {
     defaults: INITIAL_DYNAMIC_PAYMENT_METHODS,
     legacy: readLegacyLocalStorage<DynamicPaymentMethod[]>(LEGACY_KEYS.paymentMethods, isNonEmptyArray),
-    // An empty list that the admin saved on purpose is respected (nothing is silently re-added).
     normalize: (x) => (Array.isArray(x) ? (x as DynamicPaymentMethod[]) : INITIAL_DYNAMIC_PAYMENT_METHODS),
     notify: showToast,
     label: 'طرق الدفع',
@@ -394,12 +328,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     productsStore.ready && ordersStore.ready && settingsStore.ready && couponsStore.ready &&
     cartStore.ready && paymentsStore.ready && requestsStore.ready && credentialsStore.ready;
 
-  // Ask the browser not to evict our database under storage pressure.
   useEffect(() => {
     void requestPersistentStorage();
   }, []);
 
-  // ---- Shared cloud copy of payment methods ----
   const [paymentCloudReady, setPaymentCloudReady] = useState(false);
   const paymentsRef = useRef(paymentsStore);
   paymentsRef.current = paymentsStore;
@@ -416,8 +348,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const local = paymentsRef.current;
 
       if (cloud && cloud.methods.length > 0 && cloud.updatedAt > local.updatedAt) {
-        // The cloud copy is strictly NEWER than what this browser saved: adopt it,
-        // but never replace a real local identifier with an empty/placeholder one.
         const localById = new Map(local.getLatest().map((m) => [m.id, m]));
         const merged = cloud.methods
           .map((cm) => {
@@ -429,8 +359,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           .sort((a, b) => a.order - b.order);
         await local.commit(merged);
       } else if (local.updatedAt > 0) {
-        // Local data is newer (or the cloud is unreachable/empty): publish what the admin saved.
-        // Never publish untouched defaults/placeholders (updatedAt === 0).
         if (await writeCloudPaymentMethods({ updatedAt: local.updatedAt, methods: local.getLatest() })) {
           lastPushedStamp.current = local.updatedAt;
         }
@@ -441,9 +369,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return () => {
       cancelled = true;
     };
-  }, [paymentsStore.ready, paymentCloudReady]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [paymentsStore.ready, paymentCloudReady]);
 
-  // Push every later (already locally verified) change to the cloud copy.
   useEffect(() => {
     if (!paymentCloudReady) return;
     const stamp = paymentsStore.updatedAt;
@@ -455,9 +382,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         showToast('تم حفظ طرق الدفع على هذا المتصفح، لكن تعذّرت مزامنتها مع باقي الأجهزة.', 'info');
       }
     });
-  }, [paymentsStore.updatedAt, paymentCloudReady]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [paymentsStore.updatedAt, paymentCloudReady]);
 
-  // ---- Active filters and views (UI-only state, intentionally not persisted) ----
   const [selectedCategory, setSelectedCategory] = useState<ProductCategory | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
@@ -466,8 +392,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [checkoutProduct, setCheckoutProduct] = useState<Product | null>(null);
   const [latestCompletedOrder, setLatestCompletedOrder] = useState<Order | null>(null);
-  // On the owner's browser, reopen the dashboard automatically on every visit.
-  // A one-time ?owner=1 visit marks this browser as the owner's browser.
+
   const [isAdminOpen, setIsAdminOpen] = useState(() => {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -493,7 +418,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setIsAdminOpen(true);
   };
 
-  // Clean the one-time bootstrap parameter from the visible URL after it has been consumed.
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -506,7 +430,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch {}
   }, []);
 
-  // Admin SESSION flags (who is logged in) stay in localStorage: they are not site data.
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
     try {
       return localStorage.getItem('digitalemdz_admin_auth') === 'true' || localStorage.getItem(OWNER_BROWSER_KEY) === 'true';
@@ -534,7 +457,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [isServiceRequestModalOpen, setIsServiceRequestModalOpen] = useState(false);
   const [activePolicy, setActivePolicy] = useState<'privacy' | 'terms' | 'refund' | 'faq' | null>(null);
 
-  // Listen for admin query parameter (?admin=true or #admin) or keyboard shortcut (Ctrl+Shift+A)
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const searchParams = new URLSearchParams(window.location.search);
@@ -554,12 +476,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, []);
 
-  // ---------------------------------------------------------------------------
-  // Service requests
-  // ---------------------------------------------------------------------------
-  const openServiceRequestModal = () => {
-    setIsServiceRequestModalOpen(true);
-  };
+  const openServiceRequestModal = () => setIsServiceRequestModalOpen(true);
 
   const createServiceRequest = (data: Omit<ServiceRequest, 'id' | 'createdAt' | 'status'>) => {
     const newReq: ServiceRequest = {
@@ -588,9 +505,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   };
 
-  // ---------------------------------------------------------------------------
-  // Admin credentials
-  // ---------------------------------------------------------------------------
   const updateAdminCredentials = (newEmail: string, newPasscode: string): boolean => {
     if (!newEmail.trim() || !newPasscode.trim()) {
       showToast('يرجى كتابة البريد وكلمة المرور الجديدة', 'error');
@@ -598,7 +512,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
     const updated = { email: newEmail.trim(), passcode: newPasscode.trim() };
     const user = { email: updated.email, name: 'إدارة متجر Digital Emdz' };
-    // `true` = the input was valid and the save was started; the success toast appears only after it is verified.
     void credentialsStore.commit(updated, {
       successMessage: 'تم تحديث البريد الإلكتروني وكلمة المرور بنجاح!',
     }).then((ok) => {
@@ -612,9 +525,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return true;
   };
 
-  // ---------------------------------------------------------------------------
-  // Cart (persisted silently; errors are still reported)
-  // ---------------------------------------------------------------------------
   const addToCart = (product: Product, quantity = 1, openCart = true) => {
     void cartStore.commit((prev) => {
       const existing = prev.find((item) => item.product.id === product.id);
@@ -626,9 +536,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return [...prev, { product, quantity }];
     });
     showToast(`تمت إضافة "${product.name}" إلى السلة`, 'success');
-    if (openCart) {
-      setIsCartOpen(true);
-    }
+    if (openCart) setIsCartOpen(true);
   };
 
   const removeFromCart = (productId: string) => {
@@ -656,7 +564,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setIsCheckoutOpen(true);
   };
 
-  // Cart calculations
   const cartCount = cart.reduce((total, item) => total + item.quantity, 0);
   const cartSubtotal = cart.reduce((total, item) => total + item.product.price * item.quantity, 0);
 
@@ -679,9 +586,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const cartDiscount = appliedCoupon ? Math.round((cartSubtotal * appliedCoupon.discountPercent) / 100) : 0;
   const cartTotal = Math.max(0, cartSubtotal - cartDiscount);
 
-  // ---------------------------------------------------------------------------
-  // Orders
-  // ---------------------------------------------------------------------------
   const createOrder = (orderData: Omit<Order, 'id' | 'createdAt'>): Order => {
     const newOrder: Order = {
       ...orderData,
@@ -724,9 +628,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   };
 
-  // ---------------------------------------------------------------------------
-  // Dynamic payment methods CRUD
-  // ---------------------------------------------------------------------------
   const addPaymentMethod = (data: Omit<DynamicPaymentMethod, 'id' | 'order'>) => {
     const id = `pm-${Date.now()}`;
     void paymentsStore.commit(
@@ -770,7 +671,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (index === -1) return prev;
       if (direction === 'up' && index === 0) return prev;
       if (direction === 'down' && index === prev.length - 1) return prev;
-
       const targetIndex = direction === 'up' ? index - 1 : index + 1;
       const copy = [...prev];
       const temp = copy[index];
@@ -787,9 +687,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   };
 
-  // ---------------------------------------------------------------------------
-  // Product CRUD
-  // ---------------------------------------------------------------------------
   const addProduct = (productData: Omit<Product, 'id' | 'createdAt' | 'rating' | 'salesCount'>) => {
     const baseId = productData.slug?.trim() || `prod-${Date.now()}`;
     const newProduct: Product = {
@@ -802,7 +699,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
     void productsStore.commit(
       (prev) => {
-        // Never overwrite an existing product accidentally when a slug is reused.
         const id = prev.some((p) => p.id === newProduct.id)
           ? `prod-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
           : newProduct.id;
@@ -819,11 +715,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteProduct = (productId: string) => {
-    void productsStore
-      .commit((prev) => prev.filter((p) => p.id !== productId), {
-        successMessage: 'تم حذف المنتج بنجاح',
-        successType: 'info',
-      });
+    void productsStore.commit((prev) => prev.filter((p) => p.id !== productId), {
+      successMessage: 'تم حذف المنتج بنجاح',
+      successType: 'info',
+    });
     void cartStore.commit((prev) => prev.filter((item) => item.product.id !== productId));
     setSelectedProduct((prev) => (prev?.id === productId ? null : prev));
     setCheckoutProduct((prev) => (prev?.id === productId ? null : prev));
@@ -867,9 +762,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   };
 
-  // ---------------------------------------------------------------------------
-  // Store settings
-  // ---------------------------------------------------------------------------
   const updateStoreSettings = (newSettings: Partial<StoreSettings>) => {
     void settingsStore.commit(
       (prev) => ({
@@ -906,9 +798,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   };
 
-  // ---------------------------------------------------------------------------
-  // Coupons
-  // ---------------------------------------------------------------------------
   const addCoupon = (coupon: Coupon) => {
     void couponsStore.commit((prev) => [...prev.filter((c) => c.code !== coupon.code), coupon], {
       successMessage: `تمت إضافة كود الخصم "${coupon.code}"`,
@@ -922,9 +811,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   };
 
-  // ---------------------------------------------------------------------------
-  // Admin auth
-  // ---------------------------------------------------------------------------
   const loginAdmin = (passcode: string): boolean => {
     const clean = passcode.trim();
     if (clean === adminCredentials.passcode || clean === 'emdz2026' || clean === ADMIN_PASSCODE) {
@@ -949,7 +835,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     showToast('تم تسجيل الخروج من لوحة التحكم', 'info');
   };
 
-  // Dedicated Owner System
   const loginOwner = (email: string, password: string): boolean => {
     const cleanEmail = email.trim().toLowerCase();
     const cleanPass = password.trim();
@@ -1009,8 +894,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setIsProductEditorOpen(true);
   };
 
-  // Never render editors on top of not-yet-loaded data: an edit made before the
-  // saved data is loaded could otherwise be built on defaults.
   if (!allReady) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff', color: '#111', fontFamily: 'sans-serif' }}>
