@@ -301,15 +301,24 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     void requestPersistentStorage();
   }, []);
 
-  // المنتجات المشتركة: تحميل الكتالوج من GitHub حتى يظهر نفس المحتوى على كل جهاز.
+  // المنتجات المشتركة: تحميل الكتالوج من قاعدة البيانات حتى يظهر نفس المحتوى على كل جهاز.
   useEffect(() => {
     let active = true;
     const syncFromCloud = async () => {
       const remote = await loadCloudProducts();
       if (!active || !Array.isArray(remote)) return;
       const local = productsStore.getLatest();
-      // لا نمسح منتجاً محلياً جديداً لم تتم مزامنته بعد إذا كان الكتالوج السحابي فارغاً.
-      if (remote.length === 0 && local.length > 0) return;
+
+      // إذا كانت قاعدة البيانات فارغة وهناك منتجات محلية غير متزامنة،
+      // نرفعها تلقائياً بدلاً من تركها محصورة في هذا المتصفح.
+      if (remote.length === 0 && local.length > 0) {
+        const saved = await saveCloudProducts(local);
+        if (active && saved.ok) {
+          showToast('تم رفع المنتجات الموجودة إلى قاعدة البيانات المشتركة ☁️', 'success');
+        }
+        return;
+      }
+
       await productsStore.commit(remote, { successType: 'info' });
     };
     if (productsStore.ready) void syncFromCloud();
