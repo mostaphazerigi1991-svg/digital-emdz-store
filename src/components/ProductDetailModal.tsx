@@ -118,11 +118,11 @@ export const ProductDetailModal: React.FC = () => {
             
             {/* Product Image Preview */}
             <div className="md:col-span-5 space-y-3">
-              <div className="relative aspect-video md:aspect-square rounded-2xl overflow-hidden bg-slate-950 border border-slate-800 shadow-xl">
+              <div className="relative aspect-[9/16] rounded-2xl overflow-hidden bg-slate-950 border border-slate-800 shadow-xl">
                 <img
                   src={product.image}
                   alt={product.name}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-contain bg-white"
                 />
                 {product.discountPercent && product.discountPercent > 0 && (
                   <div className="absolute top-3 left-3 bg-rose-600 text-white font-black text-xs px-2.5 py-1 rounded-lg shadow-lg">
