@@ -132,14 +132,10 @@ export const ProductDetailModal: React.FC = () => {
               </div>
 
               {/* Sub features badges */}
-              <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-300">
+              <div className="grid grid-cols-1 gap-2 text-[11px] text-slate-300">
                 <div className="p-2.5 rounded-xl bg-slate-800/50 border border-slate-700/50 flex items-center gap-2">
                   <Zap className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                   <span>تسليم فوري ومباشر</span>
-                </div>
-                <div className="p-2.5 rounded-xl bg-slate-800/50 border border-slate-700/50 flex items-center gap-2">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span>ضمان استبدال رسمي</span>
                 </div>
               </div>
             </div>
@@ -377,14 +373,10 @@ export const ProductDetailModal: React.FC = () => {
                 {product.deliveryMethod}
               </p>
               
-              <div className="pt-4 border-t border-slate-800 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-slate-400">
-                <div className="flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                  <span>جميع الأكواد والتراخيص مفحوصة ومضمونة 100%</span>
-                </div>
+              <div className="pt-4 border-t border-slate-800 text-xs text-slate-400">
                 <div className="flex items-center gap-2">
                   <Clock className="w-4 h-4 text-cyan-400" />
-                  <span>دعم متواصل لاستبدال أو حل أي استفسار</span>
+                  <span>دعم متواصل لأي استفسار أو مساعدة بعد الشراء</span>
                 </div>
               </div>
             </div>
