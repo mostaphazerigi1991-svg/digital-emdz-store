@@ -121,7 +121,7 @@ export const CartDrawer: React.FC = () => {
                     </h4>
                     <div className="text-xs text-cyan-400 font-bold mt-1">
                       {product.price.toLocaleString()} {storeSettings.currency}
-                      <span className="block text-[10px] text-emerald-400">≈ {formatUsd(product.price)}</span>
+                      <span className="block text-[10px] text-emerald-400">{product.priceUsd != null && product.priceUsd > 0 ? `${product.priceUsd}` : `≈ ${formatUsd(product.price)}`}</span>
                     </div>
 
                     {/* Quantity Selector */}
