@@ -467,7 +467,7 @@ export const AdminDashboard: React.FC = () => {
     showToast(`تم تحديث سعر "${p.name}" إلى ${newPrice.toLocaleString()} ${storeSettings.currency} بنجاح!`, 'success');
   };
 
-  const handleSaveProduct = (e: React.FormEvent) => {
+  const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!productFormData.name.trim()) {
@@ -534,10 +534,12 @@ export const AdminDashboard: React.FC = () => {
       faqs: faqs.length ? faqs : [{ question: 'طريقة التسليم؟', answer: productFormData.deliveryMethod }]
     };
 
+    let saved = false;
+
     if (editingProductId) {
       const existing = products.find(p => p.id === editingProductId);
       if (existing) {
-        updateProduct({
+        saved = await updateProduct({
           ...existing,
           ...payload,
           id: existing.id,
@@ -547,8 +549,10 @@ export const AdminDashboard: React.FC = () => {
         });
       }
     } else {
-      addProduct(payload);
+      saved = await addProduct(payload);
     }
+
+    if (!saved) return;
 
     setIsEditingProduct(false);
     setEditingProductId(null);
