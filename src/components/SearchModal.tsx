@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Search, X, Star, ArrowLeft, Zap } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
+import { formatUsd } from '../utils/price';
 
 export const SearchModal: React.FC = () => {
   const { 
@@ -96,6 +97,7 @@ export const SearchModal: React.FC = () => {
                       <span className="text-cyan-400 font-bold font-mono">
                         {product.price.toLocaleString()} {storeSettings.currency}
                       </span>
+                      <span className="text-emerald-400 font-bold">≈ {formatUsd(product.price)}</span>
                       {product.originalPrice && (
                         <span className="line-through text-slate-500 font-mono">
                           {product.originalPrice.toLocaleString()} {storeSettings.currency}
