@@ -18,6 +18,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
+import { formatUsd } from '../utils/price';
 import { Product } from '../types';
 
 export const ProductDetailModal: React.FC = () => {
@@ -194,6 +195,7 @@ export const ProductDetailModal: React.FC = () => {
                       <span className="text-2xl sm:text-3xl font-black text-white">
                         {product.price.toLocaleString()} <span className="text-sm font-bold text-cyan-400">{storeSettings.currency}</span>
                       </span>
+                      <span className="text-xs font-bold text-emerald-400">≈ {formatUsd(product.price)}</span>
                       {product.originalPrice && product.originalPrice > product.price && (
                         <span className="text-sm text-slate-500 line-through">
                           {product.originalPrice.toLocaleString()} {storeSettings.currency}
