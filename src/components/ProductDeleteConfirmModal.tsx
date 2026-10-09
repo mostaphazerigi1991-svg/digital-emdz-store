@@ -1,7 +1,6 @@
 import React from 'react';
 import { Trash2, AlertTriangle, X } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
-import { formatUsd } from '../utils/price';
 
 export const ProductDeleteConfirmModal: React.FC = () => {
   const { 
@@ -66,7 +65,6 @@ export const ProductDeleteConfirmModal: React.FC = () => {
               <h4 className="text-xs font-bold text-white truncate">{productToDelete.name}</h4>
               <div className="text-xs text-cyan-400 font-bold mt-0.5">
                 {productToDelete.price.toLocaleString()} {storeSettings.currency}
-                <span className="text-emerald-400 ml-2">≈ {formatUsd(productToDelete.price)}</span>
               </div>
               <div className="text-[10px] text-slate-500 mt-0.5">{productToDelete.category}</div>
             </div>
