@@ -1,0 +1,2 @@
+Digital Emdz shared product catalog deployment marker.
+The storefront uses the Hatchable PostgreSQL catalog API.
