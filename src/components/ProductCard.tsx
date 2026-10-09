@@ -160,10 +160,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
           <div className="flex items-baseline justify-between">
             <div className="flex items-baseline gap-2">
               <span className="text-lg font-black text-white">
-                <span className="text-lg font-black text-white">
-                  {product.price.toLocaleString()} <span className="text-xs font-bold text-cyan-400">{storeSettings.currency}</span>
-                </span>
-                <span className="text-[10px] font-bold text-emerald-400/90">≈ {formatUsd(product.price)}</span>
+                {product.price.toLocaleString()} <span className="text-xs font-bold text-cyan-400">{storeSettings.currency}</span>
+              </span>
+              <span className="text-[10px] font-bold text-emerald-400/90">≈ {formatUsd(product.price)}</span>
               {product.originalPrice && product.originalPrice > product.price && (
                 <span className="text-xs text-slate-500 line-through">
                   {product.originalPrice.toLocaleString()} {storeSettings.currency}
