@@ -40,6 +40,7 @@ export interface Product {
   shortDescription: string;
   fullDescription: string;
   price: number;
+  priceUsd?: number;
   originalPrice?: number;
   discountPercent?: number;
   badge?: ProductBadge;
