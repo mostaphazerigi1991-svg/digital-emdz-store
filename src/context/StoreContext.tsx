@@ -7,7 +7,7 @@ import {
   INITIAL_DYNAMIC_PAYMENT_METHODS
 } from '../data/initialData';
 import { PERSIST_KEYS, requestPersistentStorage } from '../utils/persistence';
-import { getCloudCatalogToken, loadCloudProducts, saveCloudProducts } from '../utils/cloudProducts';
+import { loadCloudProducts, saveCloudProducts } from '../utils/cloudProducts';
 import { usePersistentState } from '../utils/usePersistentState';
 import {
   CartItem,
@@ -317,18 +317,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [productsStore.ready]);
 
   const syncProductsToCloud = async (products: Product[]) => {
-    if (!getCloudCatalogToken()) {
-      showToast('لم يتم نشر المنتج على جميع الأجهزة: فعّل "مزامنة المنتجات بين جميع الأجهزة ☁️" أولاً من الإعدادات.', 'error');
-      return false;
-    }
     const result = await saveCloudProducts(products);
     if (!result.ok) {
       const message =
-        result.reason === 'invalid_token'
-          ? 'تعذر المزامنة: رمز GitHub غير صالح أو لا يملك صلاحية Contents: Read and write.'
-          : result.reason === 'conflict'
-            ? 'حدث تعارض أثناء مزامنة المنتجات. أعد المحاولة بعد تحديث الصفحة.'
-            : 'تعذر مزامنة المنتجات مع السحابة. لم يتم اعتماد التغيير على المتجر العام.';
+        result.reason === 'network_error'
+          ? 'تعذر الاتصال بقاعدة بيانات المنتجات. تحقق من اتصال الإنترنت وحاول مرة أخرى.'
+          : 'تعذر حفظ المنتجات في قاعدة البيانات المشتركة. لم يتم اعتماد التغيير على المتجر العام.';
       showToast(message, 'error');
       return false;
     }
