@@ -200,6 +200,90 @@ const DEFAULT_SERVICE_REQUESTS: ServiceRequest[] = [
 
 const DEFAULT_ADMIN_CREDENTIALS = { email: 'mostaphazerigi1991@gmail.com', passcode: 'mostapha1991' };
 
+export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [toasts, setToasts] = useState<ToastInfo[]>([]);
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    const id = Math.random().toString(36).substring(2, 9);
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, type === 'error' ? 8000 : 3800);
+  }, []);
+
+  const productsStore = usePersistentState<Product[]>(PERSIST_KEYS.products, {
+    defaults: INITIAL_PRODUCTS,
+    legacy: readLegacyLocalStorage<Product[]>(LEGACY_KEYS.products, isArray),
+    normalize: (x) => (Array.isArray(x) ? (x as Product[]) : INITIAL_PRODUCTS),
+    notify: showToast,
+    label: 'المنتجات',
+  });
+  const ordersStore = usePersistentState<Order[]>(PERSIST_KEYS.orders, {
+    defaults: [],
+    legacy: readLegacyLocalStorage<Order[]>(LEGACY_KEYS.orders, isArray),
+    normalize: (x) => (Array.isArray(x) ? (x as Order[]) : []),
+    notify: showToast,
+    label: 'الطلبات',
+  });
+  const settingsStore = usePersistentState<StoreSettings>(PERSIST_KEYS.settings, {
+    defaults: INITIAL_STORE_SETTINGS,
+    legacy: readLegacyLocalStorage<StoreSettings>(LEGACY_KEYS.settings, (x): x is StoreSettings => !!x && typeof x === 'object' && !Array.isArray(x)),
+    normalize: normalizeSettings,
+    notify: showToast,
+    label: 'إعدادات المتجر',
+  });
+  const couponsStore = usePersistentState<Coupon[]>(PERSIST_KEYS.coupons, {
+    defaults: INITIAL_COUPONS,
+    legacy: readLegacyLocalStorage<Coupon[]>(LEGACY_KEYS.coupons, isArray),
+    normalize: (x) => (Array.isArray(x) ? (x as Coupon[]) : INITIAL_COUPONS),
+    notify: showToast,
+    label: 'أكواد الخصم',
+  });
+  const cartStore = usePersistentState<CartItem[]>(PERSIST_KEYS.cart, {
+    defaults: [],
+    legacy: readLegacyLocalStorage<CartItem[]>(LEGACY_KEYS.cart, isArray),
+    normalize: (x) => (Array.isArray(x) ? (x as CartItem[]) : []),
+    notify: showToast,
+    label: 'السلة',
+  });
+  const paymentsStore = usePersistentState<DynamicPaymentMethod[]>(PERSIST_KEYS.paymentMethods, {
+    defaults: INITIAL_DYNAMIC_PAYMENT_METHODS,
+    legacy: readLegacyLocalStorage<DynamicPaymentMethod[]>(LEGACY_KEYS.paymentMethods, isNonEmptyArray),
+    normalize: (x) => (Array.isArray(x) ? (x as DynamicPaymentMethod[]) : INITIAL_DYNAMIC_PAYMENT_METHODS),
+    notify: showToast,
+    label: 'طرق الدفع',
+  });
+  const requestsStore = usePersistentState<ServiceRequest[]>(PERSIST_KEYS.serviceRequests, {
+    defaults: DEFAULT_SERVICE_REQUESTS,
+    legacy: readLegacyLocalStorage<ServiceRequest[]>(LEGACY_KEYS.serviceRequests, isArray),
+    normalize: (x) => (Array.isArray(x) ? (x as ServiceRequest[]) : DEFAULT_SERVICE_REQUESTS),
+    notify: showToast,
+    label: 'طلبات الخدمات',
+  });
+  const credentialsStore = usePersistentState<{ email: string; passcode: string }>(PERSIST_KEYS.adminCredentials, {
+    defaults: DEFAULT_ADMIN_CREDENTIALS,
+    legacy: readLegacyLocalStorage(LEGACY_KEYS.adminCredentials, isCredentials),
+    normalize: (x) => (isCredentials(x) ? x : DEFAULT_ADMIN_CREDENTIALS),
+    notify: showToast,
+    label: 'بيانات دخول المدير',
+  });
+
+  const products = productsStore.value;
+  const orders = ordersStore.value;
+  const storeSettings = settingsStore.value;
+  const coupons = couponsStore.value;
+  const cart = cartStore.value;
+  const paymentMethods = paymentsStore.value;
+  const serviceRequests = requestsStore.value;
+  const adminCredentials = credentialsStore.value;
+
+  const allReady =
+    productsStore.ready && ordersStore.ready && settingsStore.ready && couponsStore.ready &&
+    cartStore.ready && paymentsStore.ready && requestsStore.ready && credentialsStore.ready;
+
+  useEffect(() => {
+    void requestPersistentStorage();
+  }, []);
+
   const [selectedCategory, setSelectedCategory] = useState<ProductCategory | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
