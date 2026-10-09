@@ -162,7 +162,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
               <span className="text-lg font-black text-white">
                 {product.price.toLocaleString()} <span className="text-xs font-bold text-cyan-400">{storeSettings.currency}</span>
               </span>
-              <span className="text-[10px] font-bold text-emerald-400/90">≈ {formatUsd(product.price)}</span>
+              <span className="text-[10px] font-bold text-emerald-400/90">{product.priceUsd != null && product.priceUsd > 0 ? `${product.priceUsd}` : `≈ ${formatUsd(product.price)}`}</span>
               {product.originalPrice && product.originalPrice > product.price && (
                 <span className="text-xs text-slate-500 line-through">
                   {product.originalPrice.toLocaleString()} {storeSettings.currency}
