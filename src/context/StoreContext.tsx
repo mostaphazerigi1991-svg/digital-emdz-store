@@ -317,7 +317,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [productsStore.ready]);
 
   const syncProductsToCloud = async (products: Product[]) => {
-    if (!getCloudCatalogToken()) return true;
+    if (!getCloudCatalogToken()) {
+      showToast('لم يتم نشر المنتج على جميع الأجهزة: فعّل "مزامنة المنتجات بين جميع الأجهزة ☁️" أولاً من الإعدادات.', 'error');
+      return false;
+    }
     const result = await saveCloudProducts(products);
     if (!result.ok) {
       const message =
@@ -325,7 +328,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           ? 'تعذر المزامنة: رمز GitHub غير صالح أو لا يملك صلاحية Contents: Read and write.'
           : result.reason === 'conflict'
             ? 'حدث تعارض أثناء مزامنة المنتجات. أعد المحاولة بعد تحديث الصفحة.'
-            : 'تعذر مزامنة المنتجات مع السحابة، لكن النسخة المحلية محفوظة.';
+            : 'تعذر مزامنة المنتجات مع السحابة. لم يتم اعتماد التغيير على المتجر العام.';
       showToast(message, 'error');
       return false;
     }
