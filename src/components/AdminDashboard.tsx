@@ -58,7 +58,7 @@ import {
 import { INITIAL_STORE_SETTINGS } from '../data/initialData';
 import { ProductImageUploader } from './ProductImageUploader';
 import { compressImageFile, saveImageToStorage } from '../utils/imageStorage';
-import { getCloudCatalogToken, saveCloudProducts, setCloudCatalogToken, validateCloudCatalogToken } from '../utils/cloudProducts';
+import { saveCloudProducts } from '../utils/cloudProducts';
 
 const getSafePaymentIdentifier = (method: { id: string; accountIdentifier: string }) => {
   const value = String(method.accountIdentifier || '').trim();
@@ -174,7 +174,6 @@ export const AdminDashboard: React.FC = () => {
   const [confirmPasswordInput, setConfirmPasswordInput] = useState('');
   const [settingsSubTab, setSettingsSubTab] = useState<'general' | 'hero_about' | 'faqs' | 'security'>('general');
   const [showNewPassword, setShowNewPassword] = useState(false);
-  const [cloudCatalogToken, setCloudCatalogTokenInput] = useState(() => getCloudCatalogToken());
   const [cloudCatalogBusy, setCloudCatalogBusy] = useState(false);
   const storeLogoInputRef = useRef<HTMLInputElement | null>(null);
   const quickPaymentLogoInputRef = useRef<HTMLInputElement | null>(null);
