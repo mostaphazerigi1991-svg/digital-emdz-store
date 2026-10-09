@@ -256,9 +256,30 @@ export async function loadData<T>(
   try {
     const stored = await loadDataInternal<T>(key);
 
-    // A v2 record always wins, including an intentionally empty array [].
+    // A v2 IndexedDB record always wins, including an intentionally empty array [].
     if (stored !== null && guard(stored)) {
       return stored;
+    }
+
+    // Migrate the current v2 localStorage cache created by older builds.
+    // This is intentionally checked before the legacy (non-v2) migration so
+    // recent admin edits are preserved when upgrading to IndexedDB.
+    try {
+      if (typeof window !== 'undefined') {
+        const cached = localStorage.getItem(PERSIST_KEYS[key]);
+        if (cached !== null) {
+          const parsed: unknown = JSON.parse(cached);
+          if (guard(parsed)) {
+            const saved = await saveDataInternal(key, parsed);
+            if (saved) {
+              await removeLegacyLocalStorage(PERSIST_KEYS[key]);
+              return parsed;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.warn(`Failed to migrate v2 localStorage for ${key}:`, error);
     }
 
     // Products must never be resurrected from stale legacy storage.

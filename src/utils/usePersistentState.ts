@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { loadData, saveData, PERSIST_KEYS } from './persistence';
 
 interface UsePersistentStateOptions<T> {
   defaults: T;
@@ -8,9 +9,13 @@ interface UsePersistentStateOptions<T> {
   label?: string;
 }
 
+const acceptAny = <T,>(_value: unknown): _value is T => true;
+
 export function usePersistentState<T>(key: string, options: UsePersistentStateOptions<T>) {
   const [value, setValue] = useState<T>(options.defaults);
   const [ready, setReady] = useState(false);
+  const latestRef = useRef<T>(options.defaults);
+  const saveQueueRef = useRef<Promise<boolean>>(Promise.resolve(true));
   const optionsRef = useRef(options);
 
   useEffect(() => {
@@ -18,76 +23,69 @@ export function usePersistentState<T>(key: string, options: UsePersistentStateOp
   }, [options]);
 
   useEffect(() => {
-    let isMounted = true;
-    const loadData = async () => {
+    let mounted = true;
+    const load = async () => {
       try {
-        const stored = localStorage.getItem(key);
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          const normalized = optionsRef.current.normalize ? optionsRef.current.normalize(parsed) : (parsed as T);
-          if (isMounted) setValue(normalized);
-        } else if (optionsRef.current.legacy) {
-          const legacyData = await optionsRef.current.legacy();
-          if (legacyData && isMounted) {
-            setValue(legacyData);
-            localStorage.setItem(key, JSON.stringify(legacyData));
-          }
-        }
+        const loaded = await loadData<T>(key as keyof typeof PERSIST_KEYS, acceptAny<T>, optionsRef.current.defaults);
+        const normalized = optionsRef.current.normalize ? optionsRef.current.normalize(loaded) : loaded;
+        if (!mounted) return;
+        latestRef.current = normalized;
+        setValue(normalized);
       } catch (error) {
-        console.error(`Error loading state for key "${key}":`, error);
+        console.error(`Error loading persistent state for "${key}":`, error);
+        if (mounted) {
+          latestRef.current = optionsRef.current.defaults;
+          setValue(optionsRef.current.defaults);
+        }
       } finally {
-        if (isMounted) setReady(true);
+        if (mounted) setReady(true);
       }
     };
-
-    loadData();
-    return () => {
-      isMounted = false;
-    };
+    void load();
+    return () => { mounted = false; };
   }, [key]);
 
   const commit = useCallback(async (
     newValueOrUpdater: T | ((prev: T) => T),
     commitOptions?: { successMessage?: string; successType?: 'success' | 'error' | 'info' }
   ): Promise<boolean> => {
-    return new Promise((resolve) => {
-      setValue((prev) => {
-        const nextValue = typeof newValueOrUpdater === 'function'
-          ? (newValueOrUpdater as (prev: T) => T)(prev)
-          : newValueOrUpdater;
+    const previous = latestRef.current;
+    const nextValue = typeof newValueOrUpdater === 'function'
+      ? (newValueOrUpdater as (prev: T) => T)(previous)
+      : newValueOrUpdater;
 
+    latestRef.current = nextValue;
+    setValue(nextValue);
+
+    const queuedSave = saveQueueRef.current.then(async () => {
+      let ok = await saveData(key as keyof typeof PERSIST_KEYS, nextValue);
+      if (!ok && typeof window !== 'undefined') {
         try {
           localStorage.setItem(key, JSON.stringify(nextValue));
-          
-          if (commitOptions?.successMessage && optionsRef.current.notify) {
-            optionsRef.current.notify(commitOptions.successMessage, commitOptions.successType || 'success');
-          }
-          resolve(true);
+          ok = true;
         } catch (error) {
-          console.error(`Error saving state for key "${key}":`, error);
-          if (optionsRef.current.notify) {
-            optionsRef.current.notify(`فشل الحفظ! الذاكرة ممتلئة بسبب حجم الصور الكبير، يرجى مسح بعض البيانات.`, 'error');
-          }
-          resolve(false);
+          console.error(`Fallback save failed for "${key}":`, error);
         }
-        
-        return nextValue;
-      });
+      }
+      if (!ok) {
+        optionsRef.current.notify?.(
+          `فشل حفظ ${optionsRef.current.label || 'البيانات'}، يرجى المحاولة مرة أخرى.`,
+          'error'
+        );
+      }
+      return ok;
     });
+
+    saveQueueRef.current = queuedSave.catch(() => false);
+    const ok = await queuedSave;
+
+    if (ok && commitOptions?.successMessage) {
+      optionsRef.current.notify?.(commitOptions.successMessage, commitOptions.successType || 'success');
+    }
+    return ok;
   }, [key]);
 
-  const getLatest = useCallback((): T => {
-    try {
-      const stored = localStorage.getItem(key);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        return optionsRef.current.normalize ? optionsRef.current.normalize(parsed) : (parsed as T);
-      }
-    } catch (error) {
-      console.error(`Error in getLatest for key "${key}":`, error);
-    }
-    return value;
-  }, [key, value]);
+  const getLatest = useCallback(() => latestRef.current, []);
 
   return { value, ready, commit, getLatest };
 }
