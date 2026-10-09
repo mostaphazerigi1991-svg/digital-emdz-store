@@ -13,6 +13,7 @@ import {
   Wrench
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
+import { formatUsd } from '../utils/price';
 
 interface HeroProps {
   onBrowseProducts: () => void;
@@ -169,6 +170,7 @@ export const Hero: React.FC<HeroProps> = ({ onBrowseProducts, onExploreOffers })
                             <span className="text-[11px] text-emerald-400 font-bold">
                               {canvaProduct.price.toLocaleString()} {storeSettings.currency}
                             </span>
+                            <span className="text-[10px] text-emerald-400 font-bold">≈ {formatUsd(canvaProduct.price)}</span>
                             {canvaProduct.originalPrice && (
                               <span className="text-[10px] text-slate-500 line-through">
                                 {canvaProduct.originalPrice.toLocaleString()} {storeSettings.currency}
