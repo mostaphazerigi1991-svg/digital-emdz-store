@@ -60,15 +60,8 @@ import { ProductImageUploader } from './ProductImageUploader';
 import { compressImageFile, saveImageToStorage } from '../utils/imageStorage';
 import { saveCloudProducts } from '../utils/cloudProducts';
 
-const getSafePaymentIdentifier = (method: { id: string; accountIdentifier: string }) => {
-  const value = String(method.accountIdentifier || '').trim();
-  if (
-    (method.id === 'baridimob' && /^RIP:\s*\d{20}\s*\(ZERIGI MOSTAPHA\)$/i.test(value)) ||
-    (method.id === 'binance_pay' && /^Binance Pay ID:\s*\d{9}\s*\(USDT TRC20\s*\/\s*BEP20\)$/i.test(value)) ||
-    (method.id === 'redotpay' && /^RedotPay ID:\s*\d{9}\s*\(USD\)$/i.test(value))
-  ) return '';
-  return value;
-};
+const getSafePaymentIdentifier = (method: { id: string; accountIdentifier: string }) =>
+  String(method.accountIdentifier || '').trim();
 
 export const PRESET_PAYMENT_LOGOS = [
   { 
