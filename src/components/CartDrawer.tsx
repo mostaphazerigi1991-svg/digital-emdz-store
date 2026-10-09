@@ -11,6 +11,7 @@ import {
   AlertCircle 
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
+import { formatUsd } from '../utils/price';
 
 export const CartDrawer: React.FC = () => {
   const { 
@@ -120,6 +121,7 @@ export const CartDrawer: React.FC = () => {
                     </h4>
                     <div className="text-xs text-cyan-400 font-bold mt-1">
                       {product.price.toLocaleString()} {storeSettings.currency}
+                      <span className="block text-[10px] text-emerald-400">≈ {formatUsd(product.price)}</span>
                     </div>
 
                     {/* Quantity Selector */}

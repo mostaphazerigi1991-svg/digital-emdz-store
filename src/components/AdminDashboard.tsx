@@ -58,6 +58,7 @@ import {
 import { INITIAL_STORE_SETTINGS } from '../data/initialData';
 import { ProductImageUploader } from './ProductImageUploader';
 import { compressImageFile, saveImageToStorage } from '../utils/imageStorage';
+import { getCloudCatalogToken, saveCloudProducts, setCloudCatalogToken, validateCloudCatalogToken } from '../utils/cloudProducts';
 
 const getSafePaymentIdentifier = (method: { id: string; accountIdentifier: string }) => {
   const value = String(method.accountIdentifier || '').trim();
@@ -173,6 +174,8 @@ export const AdminDashboard: React.FC = () => {
   const [confirmPasswordInput, setConfirmPasswordInput] = useState('');
   const [settingsSubTab, setSettingsSubTab] = useState<'general' | 'hero_about' | 'faqs' | 'security'>('general');
   const [showNewPassword, setShowNewPassword] = useState(false);
+  const [cloudCatalogToken, setCloudCatalogTokenInput] = useState(() => getCloudCatalogToken());
+  const [cloudCatalogBusy, setCloudCatalogBusy] = useState(false);
   const storeLogoInputRef = useRef<HTMLInputElement | null>(null);
   const quickPaymentLogoInputRef = useRef<HTMLInputElement | null>(null);
   const [quickLogoPaymentId, setQuickLogoPaymentId] = useState<string | null>(null);
@@ -2967,6 +2970,67 @@ export const AdminDashboard: React.FC = () => {
                   {/* -------------------------------------------------------- */}
                   {settingsSubTab === 'security' && (
                     <div className="space-y-6 animate-fadeIn">
+                      <div className="p-5 sm:p-6 rounded-2xl bg-gradient-to-r from-indigo-950/70 via-slate-950 to-cyan-950/50 border border-indigo-500/30 space-y-4">
+                        <div className="flex items-start gap-3">
+                          <div className="w-10 h-10 rounded-2xl bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 flex items-center justify-center shrink-0">
+                            <RefreshCw className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-white text-sm">مزامنة المنتجات بين جميع الأجهزة ☁️</h4>
+                            <p className="text-xs text-slate-400 mt-1 leading-6">
+                              المتجر يعمل الآن بحفظ محلي لكل متصفح. لإظهار المنتجات التي تضيفها على هاتف أو جهاز آخر،
+                              اربط كتالوج المنتجات بحساب GitHub عبر رمز وصول محدود بصلاحية Contents: Read and write.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2.5">
+                          <input
+                            type="password"
+                            value={cloudCatalogToken}
+                            onChange={(e) => setCloudCatalogTokenInput(e.target.value)}
+                            placeholder="الصق GitHub Fine-grained Token هنا"
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-3 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
+                            autoComplete="off"
+                          />
+                          <button
+                            type="button"
+                            disabled={cloudCatalogBusy}
+                            onClick={async () => {
+                              setCloudCatalogBusy(true);
+                              const valid = await validateCloudCatalogToken(cloudCatalogToken);
+                              if (!valid) {
+                                showToast('رمز GitHub غير صالح أو لا يملك صلاحية قراءة ملف الكتالوج.', 'error');
+                                setCloudCatalogBusy(false);
+                                return;
+                              }
+                              setCloudCatalogToken(cloudCatalogToken);
+                              const result = await saveCloudProducts(products);
+                              setCloudCatalogBusy(false);
+                              if (!result.ok) {
+                                showToast('تم التحقق من الرمز لكن تعذرت مزامنة المنتجات الحالية.', 'error');
+                                return;
+                              }
+                              showToast('تم تفعيل المزامنة السحابية وحفظ المنتجات الحالية بنجاح! ☁️', 'success');
+                            }}
+                            className="px-5 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 text-white text-xs font-black disabled:opacity-50"
+                          >
+                            {cloudCatalogBusy ? 'جارٍ المزامنة...' : 'تفعيل المزامنة الآن'}
+                          </button>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[10px] text-slate-500">
+                          <span>🔒 الرمز محفوظ في جلسة هذا المتصفح فقط ولا يدخل في كود الموقع العام.</span>
+                          <a
+                            href="https://github.com/settings/personal-access-tokens/fine-grained"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-cyan-400 hover:text-cyan-300 font-bold"
+                          >
+                            إنشاء Fine-grained Token ↗
+                          </a>
+                        </div>
+                      </div>
                       <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-2xl bg-cyan-600/20 border border-cyan-500/40 text-cyan-400 flex items-center justify-center shrink-0">
