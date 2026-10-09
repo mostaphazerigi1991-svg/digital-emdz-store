@@ -3,7 +3,7 @@ import type { Product } from '../types';
 const CATALOG_API_URL = 'https://digital-emdz-0bch.hatchable.site/api/catalog';
 
 // Kept for backwards compatibility with the old settings UI.
-// The catalog is now stored in a real shared PostgreSQL database.
+// The catalog is now stored in a real shared PostgreSQL database and deployed independently of browser storage.
 export const getCloudCatalogToken = () => 'database';
 export const setCloudCatalogToken = (_token: string) => {};
 
