@@ -409,6 +409,11 @@ export const CheckoutModal: React.FC = () => {
                           {pm.description && (
                             <span className="text-[10px] text-slate-400 block truncate">{pm.description}</span>
                           )}
+                          {getPaymentIdentifier(pm) && (
+                            <span dir="ltr" className="text-[10px] text-emerald-300 font-mono block truncate mt-1">
+                              {getPaymentIdentifier(pm)}
+                            </span>
+                          )}
                         </div>
                       </label>
                     );
