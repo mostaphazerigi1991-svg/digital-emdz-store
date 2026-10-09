@@ -7,6 +7,7 @@ import {
   INITIAL_DYNAMIC_PAYMENT_METHODS
 } from '../data/initialData';
 import { PERSIST_KEYS, requestPersistentStorage } from '../utils/persistence';
+import { getCloudCatalogToken, loadCloudProducts, saveCloudProducts } from '../utils/cloudProducts';
 import { usePersistentState } from '../utils/usePersistentState';
 import {
   CartItem,
@@ -299,6 +300,37 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     void requestPersistentStorage();
   }, []);
+
+  // المنتجات المشتركة: تحميل الكتالوج من GitHub حتى يظهر نفس المحتوى على كل جهاز.
+  useEffect(() => {
+    let active = true;
+    const syncFromCloud = async () => {
+      const remote = await loadCloudProducts();
+      if (!active || !Array.isArray(remote)) return;
+      const local = productsStore.getLatest();
+      // لا نمسح منتجاً محلياً جديداً لم تتم مزامنته بعد إذا كان الكتالوج السحابي فارغاً.
+      if (remote.length === 0 && local.length > 0) return;
+      await productsStore.commit(remote, { successType: 'info' });
+    };
+    if (productsStore.ready) void syncFromCloud();
+    return () => { active = false; };
+  }, [productsStore.ready]);
+
+  const syncProductsToCloud = async (products: Product[]) => {
+    if (!getCloudCatalogToken()) return true;
+    const result = await saveCloudProducts(products);
+    if (!result.ok) {
+      const message =
+        result.reason === 'invalid_token'
+          ? 'تعذر المزامنة: رمز GitHub غير صالح أو لا يملك صلاحية Contents: Read and write.'
+          : result.reason === 'conflict'
+            ? 'حدث تعارض أثناء مزامنة المنتجات. أعد المحاولة بعد تحديث الصفحة.'
+            : 'تعذر مزامنة المنتجات مع السحابة، لكن النسخة المحلية محفوظة.';
+      showToast(message, 'error');
+      return false;
+    }
+    return true;
+  };
 
   const [selectedCategory, setSelectedCategory] = useState<ProductCategory | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -613,28 +645,33 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       isPublished: productData.isPublished !== false,
       createdAt: new Date().toISOString(),
     };
-    return productsStore.commit(
-      (prev) => {
-        const id = prev.some((p) => p.id === newProduct.id)
-          ? `prod-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
-          : newProduct.id;
-        return [{ ...newProduct, id }, ...prev];
-      },
-      { successMessage: `تمت إضافة منتج "${newProduct.name}" بنجاح!` },
-    );
+    const previous = productsStore.getLatest();
+    const id = previous.some((p) => p.id === newProduct.id)
+      ? `prod-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+      : newProduct.id;
+    const nextProducts = [{ ...newProduct, id }, ...previous];
+    const localOk = await productsStore.commit(nextProducts, {
+      successMessage: `تمت إضافة منتج "${newProduct.name}" بنجاح!`,
+    });
+    if (!localOk) return false;
+    return (await syncProductsToCloud(nextProducts)) !== false;
   };
 
-  const updateProduct = (updated: Product): Promise<boolean> => {
-    return productsStore.commit((prev) => prev.map((p) => (p.id === updated.id ? updated : p)), {
+  const updateProduct = async (updated: Product): Promise<boolean> => {
+    const nextProducts = productsStore.getLatest().map((p) => (p.id === updated.id ? updated : p));
+    const localOk = await productsStore.commit(nextProducts, {
       successMessage: `تم حفظ تعديلات "${updated.name}" بنجاح!`,
     });
+    if (!localOk) return false;
+    return (await syncProductsToCloud(nextProducts)) !== false;
   };
 
   const deleteProduct = (productId: string) => {
-    void productsStore.commit((prev) => prev.filter((p) => p.id !== productId), {
+    const nextProducts = productsStore.getLatest().filter((p) => p.id !== productId);
+    void productsStore.commit(nextProducts, {
       successMessage: 'تم حذف المنتج بنجاح',
       successType: 'info',
-    });
+    }).then(() => syncProductsToCloud(nextProducts));
     void cartStore.commit((prev) => prev.filter((item) => item.product.id !== productId));
     setSelectedProduct((prev) => (prev?.id === productId ? null : prev));
     setCheckoutProduct((prev) => (prev?.id === productId ? null : prev));
@@ -651,31 +688,30 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       createdAt: new Date().toISOString(),
       salesCount: 0,
     };
-    void productsStore.commit((prev) => [duplicated, ...prev], {
+    const nextProducts = [duplicated, ...productsStore.getLatest()];
+    void productsStore.commit(nextProducts, {
       successMessage: `تم نسخ المنتج بنجاح كـ "${duplicated.name}"`,
-    });
+    }).then(() => syncProductsToCloud(nextProducts));
   };
 
   const toggleProductPublish = (productId: string) => {
     const target = productsStore.getLatest().find((p) => p.id === productId);
     if (!target) return;
     const next = !(target.isPublished !== false);
-    void productsStore.commit(
-      (prev) => prev.map((p) => (p.id === productId ? { ...p, isPublished: next } : p)),
-      {
-        successMessage: next
-          ? `تم نشر المنتج "${target.name}" للزوار`
-          : `تم إخفاء المنتج "${target.name}" عن الزوار`,
-        successType: 'info',
-      },
-    );
+    const nextProducts = productsStore.getLatest().map((p) => (p.id === productId ? { ...p, isPublished: next } : p));
+    void productsStore.commit(nextProducts, {
+      successMessage: next
+        ? `تم نشر المنتج "${target.name}" للزوار`
+        : `تم إخفاء المنتج "${target.name}" عن الزوار`,
+      successType: 'info',
+    }).then(() => syncProductsToCloud(nextProducts));
   };
 
   const resetProductsToDefault = () => {
     void productsStore.commit([], {
       successMessage: 'تم تنظيف كتالوج المنتجات الافتراضي بنجاح',
       successType: 'info',
-    });
+    }).then(() => syncProductsToCloud([]));
   };
 
   const updateStoreSettings = (newSettings: Partial<StoreSettings>) => {
