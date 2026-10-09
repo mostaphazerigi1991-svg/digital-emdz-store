@@ -74,8 +74,8 @@ interface StoreContextType {
   storeSettings: StoreSettings;
   updateStoreSettings: (settings: Partial<StoreSettings>) => void;
   resetStoreSettingsToDefault: () => void;
-  addProduct: (product: Omit<Product, 'id' | 'createdAt' | 'rating' | 'salesCount'>) => void;
-  updateProduct: (product: Product) => void;
+  addProduct: (product: Omit<Product, 'id' | 'createdAt' | 'rating' | 'salesCount'>) => Promise<boolean>;
+  updateProduct: (product: Product) => Promise<boolean>;
   deleteProduct: (productId: string) => void;
   duplicateProduct: (productId: string) => void;
   toggleProductPublish: (productId: string) => void;
@@ -137,6 +137,18 @@ const LEGACY_KEYS = {
   serviceRequests: 'digitalemdz_service_requests',
   adminCredentials: 'digitalemdz_admin_credentials',
 } as const;
+
+const LEGACY_PRODUCT_IDS = new Set([
+  'canva-pro-lifetime',
+  'chatgpt-plus-month',
+  'windows-11-pro-key',
+  'office-365-lifetime',
+  'ecommerce-social-canva-pack',
+  'midjourney-shared-plan',
+  'notion-ultimate-life-business-os',
+  'digital-product-mastery-course',
+  'international-accounts-consulting',
+]);
 
 const readLegacyLocalStorage = <T,>(key: string, guard: (x: unknown) => x is T) => async (): Promise<T | null> => {
   try {
@@ -213,7 +225,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const productsStore = usePersistentState<Product[]>(PERSIST_KEYS.products, {
     defaults: INITIAL_PRODUCTS,
     legacy: readLegacyLocalStorage<Product[]>(LEGACY_KEYS.products, isArray),
-    normalize: (x) => (Array.isArray(x) ? (x as Product[]) : INITIAL_PRODUCTS),
+    normalize: (x) => (
+      Array.isArray(x)
+        ? (x as Product[]).filter((product) => !LEGACY_PRODUCT_IDS.has(product.id))
+        : INITIAL_PRODUCTS
+    ),
     notify: showToast,
     label: 'المنتجات',
   });
@@ -587,7 +603,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   };
 
-  const addProduct = (productData: Omit<Product, 'id' | 'createdAt' | 'rating' | 'salesCount'>) => {
+  const addProduct = async (productData: Omit<Product, 'id' | 'createdAt' | 'rating' | 'salesCount'>): Promise<boolean> => {
     const baseId = productData.slug?.trim() || `prod-${Date.now()}`;
     const newProduct: Product = {
       ...productData,
@@ -597,7 +613,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       isPublished: productData.isPublished !== false,
       createdAt: new Date().toISOString(),
     };
-    void productsStore.commit(
+    return productsStore.commit(
       (prev) => {
         const id = prev.some((p) => p.id === newProduct.id)
           ? `prod-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
@@ -608,8 +624,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     );
   };
 
-  const updateProduct = (updated: Product) => {
-    void productsStore.commit((prev) => prev.map((p) => (p.id === updated.id ? updated : p)), {
+  const updateProduct = (updated: Product): Promise<boolean> => {
+    return productsStore.commit((prev) => prev.map((p) => (p.id === updated.id ? updated : p)), {
       successMessage: `تم حفظ تعديلات "${updated.name}" بنجاح!`,
     });
   };
@@ -656,8 +672,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const resetProductsToDefault = () => {
-    void productsStore.commit(INITIAL_PRODUCTS, {
-      successMessage: 'تمت استعادة كتالوج المنتجات الأصلي',
+    void productsStore.commit([], {
+      successMessage: 'تم تنظيف كتالوج المنتجات الافتراضي بنجاح',
       successType: 'info',
     });
   };
