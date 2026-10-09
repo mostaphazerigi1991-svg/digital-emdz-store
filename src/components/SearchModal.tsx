@@ -97,7 +97,7 @@ export const SearchModal: React.FC = () => {
                       <span className="text-cyan-400 font-bold font-mono">
                         {product.price.toLocaleString()} {storeSettings.currency}
                       </span>
-                      <span className="text-emerald-400 font-bold">≈ {formatUsd(product.price)}</span>
+                      <span className="text-emerald-400 font-bold">{product.priceUsd != null && product.priceUsd > 0 ? `${product.priceUsd}` : `≈ ${formatUsd(product.price)}`}</span>
                       {product.originalPrice && (
                         <span className="line-through text-slate-500 font-mono">
                           {product.originalPrice.toLocaleString()} {storeSettings.currency}
