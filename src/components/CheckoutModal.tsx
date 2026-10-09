@@ -16,7 +16,6 @@ import {
   FileText
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
-import { formatUsd } from '../utils/price';
 import { OrderItem } from '../types';
 
 const getPaymentIdentifier = (method: { accountIdentifier: string }) => {
@@ -294,7 +293,6 @@ export const CheckoutModal: React.FC = () => {
                   <span className="text-cyan-400 font-mono">
                     {total.toLocaleString()} {storeSettings.currency}
                   </span>
-                  <span className="text-emerald-400 font-bold">≈ {formatUsd(total)}</span>
                 </h3>
                 
                 <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
