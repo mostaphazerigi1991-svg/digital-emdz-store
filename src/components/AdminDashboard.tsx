@@ -2976,61 +2976,37 @@ export const AdminDashboard: React.FC = () => {
                             <RefreshCw className="w-5 h-5" />
                           </div>
                           <div>
-                            <h4 className="font-bold text-white text-sm">مزامنة المنتجات بين جميع الأجهزة ☁️</h4>
+                            <h4 className="font-bold text-white text-sm">قاعدة بيانات المنتجات المشتركة ☁️</h4>
                             <p className="text-xs text-slate-400 mt-1 leading-6">
-                              المتجر يعمل الآن بحفظ محلي لكل متصفح. لإظهار المنتجات التي تضيفها على هاتف أو جهاز آخر،
-                              اربط كتالوج المنتجات بحساب GitHub عبر رمز وصول محدود بصلاحية Contents: Read and write.
+                              تم ربط المتجر الآن بقاعدة بيانات مشتركة. عند إضافة أو تعديل أو حذف منتج، يتم حفظ التغيير في قاعدة البيانات حتى يظهر للزوار من أي جهاز.
                             </p>
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2.5">
-                          <input
-                            type="password"
-                            value={cloudCatalogToken}
-                            onChange={(e) => setCloudCatalogTokenInput(e.target.value)}
-                            placeholder="الصق GitHub Fine-grained Token هنا"
-                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-3 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
-                            autoComplete="off"
-                          />
+                        <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-emerald-950/30 border border-emerald-800/40">
+                          <div className="text-xs text-emerald-300 font-bold">
+                            ✓ قاعدة البيانات المشتركة مفعلة تلقائيًا
+                          </div>
                           <button
                             type="button"
                             disabled={cloudCatalogBusy}
                             onClick={async () => {
                               setCloudCatalogBusy(true);
-                              const valid = await validateCloudCatalogToken(cloudCatalogToken);
-                              if (!valid) {
-                                showToast('رمز GitHub غير صالح أو لا يملك صلاحية قراءة ملف الكتالوج.', 'error');
-                                setCloudCatalogBusy(false);
-                                return;
-                              }
-                              setCloudCatalogToken(cloudCatalogToken);
                               const result = await saveCloudProducts(products);
                               setCloudCatalogBusy(false);
                               if (!result.ok) {
-                                showToast('تم التحقق من الرمز لكن تعذرت مزامنة المنتجات الحالية.', 'error');
+                                showToast('تعذر حفظ المنتجات في قاعدة البيانات المشتركة. حاول مرة أخرى.', 'error');
                                 return;
                               }
-                              showToast('تم تفعيل المزامنة السحابية وحفظ المنتجات الحالية بنجاح! ☁️', 'success');
+                              showToast('تم حفظ جميع المنتجات في قاعدة البيانات المشتركة بنجاح! ☁️', 'success');
                             }}
                             className="px-5 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 text-white text-xs font-black disabled:opacity-50"
                           >
-                            {cloudCatalogBusy ? 'جارٍ المزامنة...' : 'تفعيل المزامنة الآن'}
+                            {cloudCatalogBusy ? 'جارٍ الحفظ...' : 'حفظ المنتجات الآن'}
                           </button>
                         </div>
-
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[10px] text-slate-500">
-                          <span>🔒 الرمز محفوظ في جلسة هذا المتصفح فقط ولا يدخل في كود الموقع العام.</span>
-                          <a
-                            href="https://github.com/settings/personal-access-tokens/fine-grained"
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-cyan-400 hover:text-cyan-300 font-bold"
-                          >
-                            إنشاء Fine-grained Token ↗
-                          </a>
-                        </div>
                       </div>
+
                       <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-2xl bg-cyan-600/20 border border-cyan-500/40 text-cyan-400 flex items-center justify-center shrink-0">
