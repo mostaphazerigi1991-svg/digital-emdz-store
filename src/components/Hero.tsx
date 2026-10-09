@@ -169,9 +169,6 @@ export const Hero: React.FC<HeroProps> = ({ onBrowseProducts, onExploreOffers })
                             <span className="text-[11px] text-emerald-400 font-bold">
                               {canvaProduct.price.toLocaleString()} {storeSettings.currency}
                             </span>
-                            {canvaProduct.priceUsd != null && canvaProduct.priceUsd > 0 && (
-                              <span className="text-[10px] text-emerald-400 font-bold">{canvaProduct.priceUsd{'}'}</span>
-                            )}
                             {canvaProduct.originalPrice && (
                               <span className="text-[10px] text-slate-500 line-through">
                                 {canvaProduct.originalPrice.toLocaleString()} {storeSettings.currency}
