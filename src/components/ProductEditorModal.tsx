@@ -49,6 +49,7 @@ export const ProductEditorModal: React.FC = () => {
     shortDescription: '',
     fullDescription: '',
     price: 1500,
+    priceUsd: 0,
     originalPrice: 2500,
     discountPercent: 40,
     badge: '' as Product['badge'],
@@ -79,6 +80,7 @@ export const ProductEditorModal: React.FC = () => {
         shortDescription: productToEdit.shortDescription,
         fullDescription: productToEdit.fullDescription,
         price: productToEdit.price,
+        priceUsd: productToEdit.priceUsd ?? 0,
         originalPrice: productToEdit.originalPrice || 0,
         discountPercent: productToEdit.discountPercent || 0,
         badge: productToEdit.badge || '',
@@ -215,6 +217,7 @@ export const ProductEditorModal: React.FC = () => {
       shortDescription: formData.shortDescription.trim(),
       fullDescription: formData.fullDescription.trim(),
       price: Number(formData.price),
+      priceUsd: Number(formData.priceUsd) > 0 ? Number(formData.priceUsd) : undefined,
       originalPrice: Number(formData.originalPrice) || undefined,
       discountPercent: Number(formData.discountPercent) || undefined,
       badge: badge || undefined,
@@ -396,7 +399,7 @@ export const ProductEditorModal: React.FC = () => {
           </div>
 
           {/* 4. PRICING & DISCOUNTS */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 rounded-2xl bg-slate-950/60 border border-slate-800">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 p-4 rounded-2xl bg-slate-950/60 border border-slate-800">
             <div>
               <label className="block text-xs font-bold text-slate-300 mb-1.5">
                 سعر البيع النهائي ({storeSettings.currency}) *
@@ -408,6 +411,21 @@ export const ProductEditorModal: React.FC = () => {
                 value={formData.price}
                 onChange={(e) => handlePriceChange(Number(e.target.value))}
                 className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs font-mono text-cyan-300 focus:outline-none focus:border-indigo-500 font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                السعر بالدولار ($) — اختياري
+              </label>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={formData.priceUsd}
+                onChange={(e) => setFormData({ ...formData, priceUsd: Number(e.target.value) })}
+                placeholder="مثال: 3.20"
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs font-mono text-emerald-300 focus:outline-none focus:border-indigo-500"
               />
             </div>
 
