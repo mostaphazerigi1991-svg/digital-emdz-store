@@ -117,7 +117,8 @@ const MainStoreContent: React.FC = () => {
   };
 
   const handleExploreOffers = () => {
-    handleNavigateSection('offers-section');
+    // Offers are part of the single catalog; avoid rendering a second copy of the same products.
+    handleNavigateSection('products-section');
   };
 
   return (
@@ -139,17 +140,8 @@ const MainStoreContent: React.FC = () => {
         {/* Categories Section */}
         <CategoriesSection />
 
-        {/* 1. Best Sellers Section */}
-        <ProductGrid mode="bestsellers" />
-
-        {/* 2. All Products & Featured Catalog */}
+        {/* One product catalog only: prevents the same product appearing in several homepage sections. */}
         <ProductGrid mode="all" />
-
-        {/* 3. Digital Subscriptions Section */}
-        <ProductGrid mode="subscriptions" />
-
-        {/* 4. Special Offers & Discounts Section */}
-        <ProductGrid mode="offers" />
 
         {/* 5. Why Choose Digital Emdz & Guarantees */}
         <AboutSection />
