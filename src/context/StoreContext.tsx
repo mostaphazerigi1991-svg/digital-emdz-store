@@ -162,6 +162,35 @@ const readLegacyLocalStorage = <T,>(key: string, guard: (x: unknown) => x is T) 
   }
 };
 
+const normalizeProductIdentity = (value: unknown) => String(value ?? '').trim().toLocaleLowerCase().replace(/\\s+/g, ' ');
+
+const getProductDuplicateKeys = (product: Product): string[] => {
+  const keys: string[] = [];
+  const id = normalizeProductIdentity(product.id);
+  const slug = normalizeProductIdentity(product.slug);
+  const name = normalizeProductIdentity(product.name);
+  const category = normalizeProductIdentity(product.category);
+  const duration = normalizeProductIdentity(product.subscriptionDuration);
+  const price = Number(product.price);
+  if (id) keys.push(`id:${id}`);
+  if (slug) keys.push(`slug:${slug}`);
+  if (name && category && Number.isFinite(price)) {
+    keys.push(`product:${name}|${category}|${price}|${duration}`);
+  }
+  return keys;
+};
+
+// Keep the first occurrence and remove repeated records from local/cloud catalogs.
+const deduplicateProducts = (items: Product[]): Product[] => {
+  const seen = new Set<string>();
+  return items.filter((product) => {
+    const keys = getProductDuplicateKeys(product);
+    if (keys.some((key) => seen.has(key))) return false;
+    keys.forEach((key) => seen.add(key));
+    return true;
+  });
+};
+
 const isArray = <T,>(x: unknown): x is T[] => Array.isArray(x);
 const isNonEmptyArray = <T,>(x: unknown): x is T[] => Array.isArray(x) && x.length > 0;
 const isCredentials = (x: unknown): x is { email: string; passcode: string } =>
@@ -307,19 +336,30 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const syncFromCloud = async () => {
       const remote = await loadCloudProducts();
       if (!active || !Array.isArray(remote)) return;
-      const local = productsStore.getLatest();
+      const local = deduplicateProducts(productsStore.getLatest());
+      const cleanRemote = deduplicateProducts(remote);
 
       // إذا كانت قاعدة البيانات فارغة وهناك منتجات محلية غير متزامنة،
       // نرفعها تلقائياً بدلاً من تركها محصورة في هذا المتصفح.
       if (remote.length === 0 && local.length > 0) {
         const saved = await saveCloudProducts(local);
         if (active && saved.ok) {
+          await productsStore.commit(local, { successType: 'info' });
           showToast('تم رفع المنتجات الموجودة إلى قاعدة البيانات المشتركة ☁️', 'success');
         }
         return;
       }
 
-      await productsStore.commit(remote, { successType: 'info' });
+      // أصلح التكرارات القديمة في قاعدة البيانات المشتركة ثم اعرض النسخة النظيفة.
+      if (cleanRemote.length !== remote.length) {
+        const saved = await saveCloudProducts(cleanRemote);
+        if (!saved.ok) {
+          showToast('اكتشفنا منتجات مكررة، لكن تعذر تنظيف قاعدة البيانات المشتركة. أعد المحاولة لاحقًا.', 'error');
+          return;
+        }
+      }
+
+      await productsStore.commit(cleanRemote, { successType: 'info' });
     };
     if (productsStore.ready) void syncFromCloud();
     return () => { active = false; };
@@ -661,11 +701,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       isPublished: productData.isPublished !== false,
       createdAt: new Date().toISOString(),
     };
-    const previous = productsStore.getLatest();
-    const id = previous.some((p) => p.id === newProduct.id)
-      ? `prod-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
-      : newProduct.id;
-    const nextProducts = [{ ...newProduct, id }, ...previous];
+    const previous = deduplicateProducts(productsStore.getLatest());
+    const newKeys = getProductDuplicateKeys(newProduct);
+    const duplicateExists = previous.some((existing) =>
+      getProductDuplicateKeys(existing).some((key) => newKeys.includes(key))
+    );
+    if (duplicateExists) {
+      showToast(`المنتج "${newProduct.name}" موجود بالفعل في المتجر؛ لم تتم إضافته مرة أخرى.`, 'error');
+      return false;
+    }
+    const nextProducts = [newProduct, ...previous];
     return commitProductsWithCloudSync(nextProducts, `تمت إضافة منتج "${newProduct.name}" بنجاح ونشره على المتجر العام! ☁️`);
   };
 
