@@ -162,7 +162,7 @@ const readLegacyLocalStorage = <T,>(key: string, guard: (x: unknown) => x is T) 
   }
 };
 
-const normalizeProductIdentity = (value: unknown) => String(value ?? '').trim().toLocaleLowerCase().replace(/\\s+/g, ' ');
+const normalizeProductIdentity = (value: unknown) => String(value ?? '').trim().toLocaleLowerCase().replace(/\s+/g, ' ');
 
 const getProductDuplicateKeys = (product: Product): string[] => {
   const keys: string[] = [];
