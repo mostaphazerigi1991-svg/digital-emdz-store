@@ -68,7 +68,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
   };
 
   return (
-    <article className="group rounded-2xl bg-slate-900/90 border border-slate-800/90 hover:border-indigo-500/50 transition-all duration-300 flex flex-col overflow-hidden shadow-lg hover:shadow-indigo-500/10 hover:-translate-y-1">
+    <article style={{ contentVisibility: "auto", containIntrinsicSize: "auto 430px" }} className="group rounded-2xl bg-slate-900/90 border border-slate-800/90 hover:border-indigo-500/50 transition-all duration-300 flex flex-col overflow-hidden shadow-lg hover:shadow-indigo-500/10 hover:-translate-y-1">
       
       {/* Product Image Area */}
       <div className="relative aspect-video w-full overflow-hidden bg-slate-950">
@@ -76,6 +76,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
           src={product.image}
           alt={product.name}
           loading="lazy"
+          decoding="async"
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
         />
 
